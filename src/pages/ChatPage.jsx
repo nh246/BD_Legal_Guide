@@ -171,7 +171,7 @@ export default function ChatPage() {
 
         <div className="p-4 border-t border-white/5 flex flex-col gap-2">
           {user?.role === 'admin' && (
-            <button className="flex items-center gap-3 text-text-secondary hover:text-brand-400 px-2 py-2 transition-colors text-sm font-medium">
+            <button onClick={() => navigate('/admin')} className="flex items-center gap-3 text-text-secondary hover:text-brand-400 px-2 py-2 transition-colors text-sm font-medium">
               <Settings className="w-4 h-4" />
               Admin Dashboard
             </button>
