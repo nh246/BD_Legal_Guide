@@ -4,8 +4,9 @@ import { AuthProvider } from './context/AuthContext'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 
+import ChatPage from './pages/ChatPage'
+
 // Placeholders for other pages
-const ChatPage = () => <div className="p-8 text-white">Chat Page coming soon...</div>
 const PricingPage = () => <div className="p-8 text-white">Pricing Page coming soon...</div>
 
 function App() {
