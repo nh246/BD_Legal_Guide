@@ -16,27 +16,25 @@ import AdminQueries from './pages/AdminQueries';
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
 
-          {/* Protected Routes (Logged in users only) */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-          </Route>
+        {/* Protected Routes (Logged in users only) */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
 
-          {/* Admin Routes (Admin users only) */}
-          <Route element={<ProtectedRoute adminOnly={true} />}>
-            <Route path="/admin" element={<AdminOverview />} />
-            <Route path="/admin/users" element={<AdminUsers />} />
-            <Route path="/admin/queries" element={<AdminQueries />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+        {/* Admin Routes (Admin users only) */}
+        <Route element={<ProtectedRoute adminOnly={true} />}>
+          <Route path="/admin" element={<AdminOverview />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
+          <Route path="/admin/queries" element={<AdminQueries />} />
+        </Route>
+      </Routes>
     </AuthProvider>
   );
 }
