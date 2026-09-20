@@ -1,123 +1,181 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Calendar, Clock, Video, MessageSquare } from 'lucide-react';
-import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
-import EmptyState from '../../components/ui/EmptyState';
+import React, { useState, useMemo } from 'react';
+import { Video, FileText, X, CheckCircle2, SearchX, Calendar } from 'lucide-react';
+import useBookingStore from '../../store/useBookingStore';
 
 export default function MyBookingsPage() {
-  // Mock bookings
-  const bookings = [
-    {
-      id: 'b1',
-      lawyerName: 'Adv. Sarah Rahman',
-      date: 'Oct 15, 2026',
-      time: '10:00 AM',
-      status: 'confirmed',
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-      // Simulate that this meeting is happening very soon
-      isJoinable: true 
-    },
-    {
-      id: 'b2',
-      lawyerName: 'Adv. Kazi Hassan',
-      date: 'Oct 18, 2026',
-      time: '02:00 PM',
-      status: 'pending',
-      isJoinable: false
-    },
-    {
-      id: 'b3',
-      lawyerName: 'Adv. Nusrat Jahan',
-      date: 'Sep 20, 2026',
-      time: '11:00 AM',
-      status: 'completed',
-      isJoinable: false
-    }
-  ];
+  const { bookings, cancelBooking } = useBookingStore();
+  const [activeTab, setActiveTab] = useState('upcoming');
+  const [selectedBrief, setSelectedBrief] = useState(null); // stores the booking object for modal
+
+  const filteredBookings = useMemo(() => {
+    return bookings.filter(b => {
+      if (activeTab === 'upcoming') return b.status === 'pending' || b.status === 'confirmed';
+      if (activeTab === 'past') return b.status === 'completed';
+      if (activeTab === 'cancelled') return b.status === 'cancelled';
+      return false;
+    });
+  }, [bookings, activeTab]);
+
+  const getInitials = (name) => name.replace('Adv. ', '').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+  const formatDate = (isoString) => {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + 
+           ', ' + 
+           date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
 
   const getStatusBadge = (status) => {
     switch(status) {
-      case 'confirmed': return <Badge variant="success">Confirmed</Badge>;
-      case 'pending': return <Badge variant="warning">Pending Approval</Badge>;
-      case 'completed': return <Badge variant="default">Completed</Badge>;
-      case 'cancelled': return <Badge variant="danger">Cancelled</Badge>;
-      default: return <Badge>Unknown</Badge>;
+      case 'pending':
+        return <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending Confirmation</span>;
+      case 'confirmed':
+        return <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">Confirmed</span>;
+      case 'completed':
+        return <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Completed</span>;
+      case 'cancelled':
+        return <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">Cancelled</span>;
+      default:
+        return null;
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-zinc-950 p-4 md:p-8">
+    <div className="min-h-[calc(100vh-64px)] bg-zinc-950 p-4 sm:p-8 relative">
       <div className="max-w-5xl mx-auto">
         
+        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-zinc-50">My Consultations</h1>
-          <p className="text-zinc-400 mt-2">Manage your upcoming and past legal consultations.</p>
+          <h1 className="text-3xl font-bold text-zinc-50 mb-2">My Consultations</h1>
+          <p className="text-zinc-500 font-medium">Manage your video consultation bookings.</p>
         </div>
 
-        {bookings.length === 0 ? (
-          <EmptyState 
-            icon={Calendar}
-            title="No bookings yet"
-            description="You haven't booked any consultations with our verified lawyers yet."
-            action={
-              <Link to="/lawyers">
-                <Button>Find a Lawyer</Button>
-              </Link>
-            }
-          />
+        {/* Tabs */}
+        <div className="flex items-center gap-6 border-b border-zinc-800 mb-8 overflow-x-auto scrollbar-none">
+          {['upcoming', 'past', 'cancelled'].map(tab => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-3 text-sm font-medium whitespace-nowrap capitalize border-b-2 transition-colors ${
+                activeTab === tab ? 'border-blue-500 text-zinc-50' : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {tab} Consultations
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        {filteredBookings.length === 0 ? (
+          <div className="bg-zinc-900/50 border border-zinc-800 border-dashed rounded-2xl p-16 flex flex-col items-center justify-center text-center">
+            <div className="h-16 w-16 bg-zinc-950 rounded-full flex items-center justify-center mb-4">
+              {activeTab === 'upcoming' ? <Calendar className="h-8 w-8 text-zinc-500" /> : <SearchX className="h-8 w-8 text-zinc-500" />}
+            </div>
+            <h3 className="text-xl font-semibold text-zinc-50 mb-2">No {activeTab} bookings</h3>
+            <p className="text-zinc-400 max-w-sm">
+              {activeTab === 'upcoming' && 'You have no upcoming consultations scheduled. Book a lawyer from the directory.'}
+              {activeTab === 'past' && 'You have not completed any consultations yet.'}
+              {activeTab === 'cancelled' && 'You have no cancelled consultations.'}
+            </p>
+          </div>
         ) : (
           <div className="space-y-4">
-            {bookings.map((booking) => (
-              <Card key={booking.id} className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-6">
+            {filteredBookings.map(booking => (
+              <div key={booking.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:border-zinc-700">
                 
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <div className="text-sm text-zinc-500 mb-1">Lawyer</div>
-                    <div className="font-semibold text-zinc-50">{booking.lawyerName}</div>
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 h-12 w-12 rounded-full bg-blue-600/10 text-blue-500 flex items-center justify-center font-bold text-lg border border-blue-500/20">
+                    {getInitials(booking.lawyerName)}
                   </div>
                   <div>
-                    <div className="text-sm text-zinc-500 mb-1">Date & Time</div>
-                    <div className="flex items-center gap-2 text-zinc-300">
-                      <Clock className="h-4 w-4" />
-                      {booking.date} at {booking.time}
+                    <h3 className="text-base font-semibold text-zinc-50 mb-1">{booking.lawyerName}</h3>
+                    <div className="text-sm text-zinc-400 mb-2">{formatDate(booking.start)}</div>
+                    <div className="flex items-center gap-3">
+                      {getStatusBadge(booking.status)}
+                      <span className="text-xs font-mono text-zinc-500">ID: {booking.id}</span>
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-zinc-500 mb-1">Status</div>
-                    <div>{getStatusBadge(booking.status)}</div>
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 md:shrink-0 pt-4 md:pt-0 border-t md:border-t-0 border-zinc-800">
-                  {booking.status === 'confirmed' ? (
-                    <Button 
-                      className={`gap-2 ${booking.isJoinable ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
-                      disabled={!booking.isJoinable}
-                    >
-                      <Video className="h-4 w-4" /> 
-                      {booking.isJoinable ? 'Join Meeting' : 'Join Link Not Ready'}
-                    </Button>
-                  ) : booking.status === 'completed' ? (
-                    <Button variant="secondary" className="gap-2">
-                      Leave Review
-                    </Button>
-                  ) : null}
+                <div className="flex flex-wrap items-center gap-3 md:justify-end">
+                  <button 
+                    onClick={() => setSelectedBrief(booking)}
+                    className="flex items-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <FileText className="h-4 w-4 text-zinc-500" /> View brief
+                  </button>
                   
-                  <Link to={`/consultation/${booking.id}`}>
-                    <Button variant="ghost" className="w-full sm:w-auto gap-2">
-                      <MessageSquare className="h-4 w-4" /> Message
-                    </Button>
-                  </Link>
+                  {(booking.status === 'pending' || booking.status === 'confirmed') && (
+                    <button 
+                      onClick={() => cancelBooking(booking.id)}
+                      className="flex items-center gap-2 bg-zinc-950 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-zinc-400 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      <X className="h-4 w-4" /> Cancel
+                    </button>
+                  )}
+
+                  {activeTab === 'upcoming' && (
+                    <div className="relative group">
+                      <button 
+                        disabled={booking.status !== 'confirmed'}
+                        onClick={() => window.open(booking.meetLink, '_blank')}
+                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium transition-colors
+                          ${booking.status === 'confirmed' 
+                            ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20' 
+                            : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-800'
+                          }
+                        `}
+                      >
+                        <Video className="h-4 w-4" /> Join Call
+                      </button>
+                      
+                      {booking.status === 'pending' && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-800 text-zinc-50 text-xs px-2 py-1 rounded shadow-lg pointer-events-none">
+                          Available after lawyer confirms
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                
-              </Card>
+
+              </div>
             ))}
           </div>
         )}
 
       </div>
+
+      {/* Brief Modal */}
+      {selectedBrief && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedBrief(null)} />
+          <div className="relative bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+            
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-zinc-50">Case Brief</h2>
+                <p className="text-sm text-zinc-400 mt-1">Submitted for {selectedBrief.lawyerName}</p>
+              </div>
+              <button onClick={() => setSelectedBrief(null)} className="p-2 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 mb-6">
+              <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{selectedBrief.caseBrief}</p>
+            </div>
+
+            <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
+              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+              <p className="text-sm text-emerald-400">
+                You securely shared this brief when booking. It helps the lawyer prepare for your consultation.
+              </p>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

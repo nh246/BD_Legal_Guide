@@ -2,8 +2,10 @@ import React from 'react';
 import { Users, FileText, Activity, ShieldAlert } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Card, { CardContent } from '../../components/ui/Card';
+import useAdminStore from '../../store/useAdminStore';
 
 export default function AdminOverview() {
+  const { auditLogs } = useAdminStore();
   const stats = [
     { title: 'Total Users', value: '4,291', icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { title: 'Pending Verifications', value: '18', icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-500/10' },
@@ -71,41 +73,66 @@ export default function AdminOverview() {
               <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-violet-500"></div><span className="text-zinc-400">RAG (Pro)</span></div>
             </div>
           </Card>
-          
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-zinc-50 mb-6">System Health</h3>
-            <div className="space-y-6">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-zinc-400">Vector Database Load</span>
-                  <span className="text-zinc-50 font-medium">42%</span>
+          <div className="space-y-6">
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-zinc-50 mb-6">System Health</h3>
+              <div className="space-y-6">
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-zinc-400">Vector Database Load</span>
+                    <span className="text-zinc-50 font-medium">42%</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-2">
+                    <div className="bg-emerald-500 h-2 rounded-full w-[42%]"></div>
+                  </div>
                 </div>
-                <div className="w-full bg-zinc-800 rounded-full h-2">
-                  <div className="bg-emerald-500 h-2 rounded-full w-[42%]"></div>
+                
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-zinc-400">LLM API Latency (Avg)</span>
+                    <span className="text-amber-400 font-medium">850ms</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-2">
+                    <div className="bg-amber-500 h-2 rounded-full w-[65%]"></div>
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-zinc-400">PostgreSQL Storage</span>
+                    <span className="text-zinc-50 font-medium">18GB / 50GB</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-2">
+                    <div className="bg-blue-500 h-2 rounded-full w-[36%]"></div>
+                  </div>
                 </div>
               </div>
-              
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-zinc-400">LLM API Latency (Avg)</span>
-                  <span className="text-amber-400 font-medium">850ms</span>
-                </div>
-                <div className="w-full bg-zinc-800 rounded-full h-2">
-                  <div className="bg-amber-500 h-2 rounded-full w-[65%]"></div>
-                </div>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-zinc-50 mb-6">Recent Activity</h3>
+              <div className="space-y-4 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 pr-2">
+                {auditLogs.length === 0 ? (
+                  <p className="text-sm text-zinc-500 text-center py-4">No recent activity</p>
+                ) : (
+                  auditLogs.slice(0, 5).map(log => (
+                    <div key={log.id} className="flex items-start gap-3 text-sm">
+                      <div className="h-2 w-2 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
+                      <div>
+                        <p className="text-zinc-300">
+                          <span className="font-semibold text-zinc-50">{log.actor}</span> {log.action}{' '}
+                          <span className="text-blue-400">{log.target}</span>
+                        </p>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-              
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-zinc-400">PostgreSQL Storage</span>
-                  <span className="text-zinc-50 font-medium">18GB / 50GB</span>
-                </div>
-                <div className="w-full bg-zinc-800 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full w-[36%]"></div>
-                </div>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
         </div>
 
       </div>

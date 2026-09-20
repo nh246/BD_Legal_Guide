@@ -47,7 +47,7 @@ const LandingPage = () => {
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-                <Link to="/login?register=true" className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-lg transition-all shadow-[0_0_40px_-10px_rgba(59,130,246,0.5)] hover:shadow-[0_0_60px_-15px_rgba(59,130,246,0.6)] flex items-center justify-center">
+                <Link to="/roles" className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-lg transition-all shadow-[0_0_40px_-10px_rgba(59,130,246,0.5)] hover:shadow-[0_0_60px_-15px_rgba(59,130,246,0.6)] flex items-center justify-center">
                   Start Researching Free
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Link>
@@ -96,7 +96,7 @@ const LandingPage = () => {
                 <Scale className="w-16 h-16 text-blue-400 mx-auto mb-6" />
                 <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Ready to transform your legal research?</h2>
                 <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">Join thousands of legal professionals who have already upgraded their workflow with BD Legal AI.</p>
-                <Link to="/login?register=true" className="inline-flex items-center px-8 py-4 bg-white text-gray-900 hover:bg-gray-100 rounded-xl font-semibold text-lg transition-colors">
+                <Link to="/roles" className="inline-flex items-center px-8 py-4 bg-white text-gray-900 hover:bg-gray-100 rounded-xl font-semibold text-lg transition-colors">
                   Create your free account
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Link>

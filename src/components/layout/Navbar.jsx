@@ -44,7 +44,7 @@ export default function Navbar() {
               <Link to="/login" className="text-sm font-medium text-zinc-300 hover:text-white transition-colors">
                 Log In
               </Link>
-              <Link to="/signup" className="text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-colors">
+              <Link to="/roles" className="text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-colors">
                 Sign Up
               </Link>
             </SignedOut>

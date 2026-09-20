@@ -2,12 +2,15 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/clerk-react';
 
-// Layout
 import Navbar from './components/layout/Navbar';
+import ProtectedRoute from './components/ProtectedRoute';
+import DemoRoleSwitcher from './components/DemoRoleSwitcher';
 
 // Public Pages
 import LandingPage from './pages/public/LandingPage';
-import SignupPage from './pages/public/SignupPage';
+import RoleSelectionPage from './pages/RoleSelectionPage';
+import SignupPage from './pages/SignupPage';
+import LoginPage from './pages/LoginPage';
 import PricingPage from './pages/public/PricingPage';
 
 // Client Pages
@@ -19,16 +22,25 @@ import MyBookingsPage from './pages/client/MyBookingsPage';
 import ConsultationChatPage from './pages/client/ConsultationChatPage';
 
 // Lawyer & Firm Pages
-import LawyerOnboarding from './pages/lawyer/LawyerOnboarding';
-import LawyerDashboard from './pages/lawyer/LawyerDashboard';
+import LawyerOnboarding from './pages/LawyerOnboarding';
+import FirmOnboarding from './pages/FirmOnboarding';
+import LawyerDashboard from './pages/LawyerDashboard';
+import FirmDashboard from './pages/FirmDashboard';
 import AvailabilityPage from './pages/lawyer/AvailabilityPage';
 import BookingDetailPage from './pages/lawyer/BookingDetailPage';
 import FirmTeamPage from './pages/firm/FirmTeamPage';
 
 // Admin Pages
+import AdminLayout from './components/layout/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
 import AdminVerification from './pages/admin/AdminVerification';
 import AdminQueries from './pages/admin/AdminQueries';
+import AdminModerators from './pages/admin/AdminModerators';
+import AdminAuditLogs from './pages/admin/AdminAuditLogs';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminComplaints from './pages/admin/AdminComplaints';
+import AdminFirms from './pages/admin/AdminFirms';
+import AdminModeration from './pages/admin/AdminModeration';
 
 // Clerk Key (Placeholder)
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_ZHVtbXktY2xlcmstcHVibGlzaGFibGUta2V5LmNsZXJrLmFjY291bnRzLmRldiQ";
@@ -43,32 +55,45 @@ function App() {
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/roles" element={<RoleSelectionPage />} />
             <Route path="/signup" element={<SignupPage />} />
-            <Route path="/login" element={<SignupPage />} /> {/* Route to signup for now */}
+            <Route path="/login" element={<LoginPage />} />
             <Route path="/pricing" element={<PricingPage />} />
-
-            {/* Client Routes */}
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/chat/:id" element={<ChatPage />} />
             <Route path="/lawyers" element={<LawyerDirectoryPage />} />
             <Route path="/lawyers/:id" element={<LawyerProfilePage />} />
-            <Route path="/consultation/book/:id" element={<BookingPage />} />
-            <Route path="/bookings" element={<MyBookingsPage />} />
-            <Route path="/consultation/:id" element={<ConsultationChatPage />} />
 
-            {/* Lawyer & Firm Routes */}
-            <Route path="/lawyer/onboarding" element={<LawyerOnboarding />} />
-            <Route path="/lawyer/dashboard" element={<LawyerDashboard />} />
-            <Route path="/lawyer/availability" element={<AvailabilityPage />} />
-            <Route path="/lawyer/bookings/:id" element={<BookingDetailPage />} />
-            <Route path="/firm/team" element={<FirmTeamPage />} />
+            {/* Protected Routes */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:id" element={<ChatPage />} />
+              <Route path="/consultation/book/:id" element={<BookingPage />} />
+              <Route path="/bookings" element={<MyBookingsPage />} />
+              <Route path="/consultation/:id" element={<ConsultationChatPage />} />
 
-            {/* Admin Routes */}
-            <Route path="/admin" element={<AdminOverview />} />
-            <Route path="/admin/verifications" element={<AdminVerification />} />
-            <Route path="/admin/queries" element={<AdminQueries />} />
+              <Route path="/lawyer/onboarding" element={<LawyerOnboarding />} />
+              <Route path="/lawyer/dashboard" element={<LawyerDashboard />} />
+              <Route path="/lawyer/availability" element={<AvailabilityPage />} />
+              <Route path="/lawyer/bookings/:id" element={<BookingDetailPage />} />
+              
+              <Route path="/firm/onboarding" element={<FirmOnboarding />} />
+              <Route path="/firm/dashboard" element={<FirmDashboard />} />
+              <Route path="/firm/team" element={<FirmTeamPage />} />
+
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<AdminOverview />} />
+                <Route path="verifications" element={<AdminVerification />} />
+                <Route path="queries" element={<AdminQueries />} />
+                <Route path="moderators" element={<AdminModerators />} />
+                <Route path="audit-logs" element={<AdminAuditLogs />} />
+                <Route path="users" element={<AdminUsers />} />
+                <Route path="complaints" element={<AdminComplaints />} />
+                <Route path="firms" element={<AdminFirms />} />
+                <Route path="moderation" element={<AdminModeration />} />
+              </Route>
+            </Route>
           </Routes>
         </main>
+        <DemoRoleSwitcher />
       </div>
     </ClerkProvider>
   );
