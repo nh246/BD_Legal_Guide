@@ -1,80 +1,114 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Scale, Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Scale, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 
-export default function LoginPage() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const { login, register } = useAuth();
+const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login, register, isAuthenticated } = useAuth();
+  
+  // Check if we should default to register tab based on URL query
+  const queryParams = new URLSearchParams(location.search);
+  const defaultIsRegister = queryParams.get('register') === 'true';
+  
+  const [isRegister, setIsRegister] = useState(defaultIsRegister);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Form fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/chat');
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setIsLoading(true);
 
     try {
-      if (isLogin) {
-        await login(formData.email, formData.password);
+      if (isRegister) {
+        if (!fullName.trim()) {
+          setError('Full name is required');
+          return;
+        }
+        const res = await register(email, password, fullName);
+        if (!res.success) setError(res.error);
+        else navigate('/chat');
       } else {
-        await register(formData.name, formData.email, formData.password);
+        const res = await login(email, password);
+        if (!res.success) setError(res.error);
+        else navigate('/chat');
       }
-      navigate('/chat'); // Redirect to chat on success
     } catch (err) {
-      setError(err.response?.data?.detail || "An error occurred. Please try again.");
+      setError('An unexpected error occurred. Please try again.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-bg-primary text-text-primary p-4">
-      {/* Background glow effects */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-brand-500/20 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-purple-500/20 blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-[#0a0f1e] flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Background effects */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="w-full max-w-md z-10">
-        <div className="flex flex-col items-center mb-8">
-          <Link to="/" className="flex items-center gap-2 mb-6 hover:opacity-80 transition-opacity">
-            <Scale className="text-brand-400 w-8 h-8" />
-            <span className="font-bold text-2xl tracking-tight">BD Legal Guide AI</span>
-          </Link>
-          <h2 className="text-3xl font-bold mb-2">
-            {isLogin ? 'Welcome back' : 'Create an account'}
-          </h2>
-          <p className="text-text-secondary">
-            {isLogin ? 'Sign in to access your legal assistant' : 'Sign up to start asking legal questions'}
-          </p>
-        </div>
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <Link to="/" className="flex items-center justify-center space-x-2 group mb-8">
+          <div className="p-2 bg-blue-500/10 rounded-lg group-hover:bg-blue-500/20 transition-colors">
+            <Scale className="h-8 w-8 text-blue-400" />
+          </div>
+          <span className="font-bold text-3xl tracking-tight text-white">
+            BD<span className="gradient-text">LegalAI</span>
+          </span>
+        </Link>
+        
+        <div className="glass-panel py-8 px-4 shadow sm:rounded-2xl sm:px-10 border border-white/10 relative overflow-hidden">
+          {/* Tabs */}
+          <div className="flex mb-8 bg-gray-900/50 rounded-lg p-1 border border-white/5">
+            <button
+              type="button"
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isRegister ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30' : 'text-gray-400 hover:text-gray-300'}`}
+              onClick={() => { setIsRegister(false); setError(''); }}
+            >
+              Log in
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isRegister ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30' : 'text-gray-400 hover:text-gray-300'}`}
+              onClick={() => { setIsRegister(true); setError(''); }}
+            >
+              Sign up
+            </button>
+          </div>
 
-        <div className="glass-panel p-8 rounded-2xl border border-white/10 shadow-2xl">
-          {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-              {error}
-            </div>
-          )}
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start space-x-2">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-400 leading-relaxed">{error}</p>
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {!isLogin && (
+            {isRegister && (
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1.5">Full Name</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-text-muted" />
+                    <User className="h-5 w-5 text-gray-500" />
                   </div>
                   <input
                     type="text"
-                    name="name"
                     required
-                    value={formData.name}
-                    onChange={handleChange}
-                    className="block w-full pl-10 pr-3 py-3 border border-white/10 rounded-xl bg-black/20 text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 transition-all"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-white/10 rounded-lg leading-5 bg-gray-900/50 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
                     placeholder="John Doe"
                   />
                 </div>
@@ -82,36 +116,34 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Email Address</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Email address</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-text-muted" />
+                  <Mail className="h-5 w-5 text-gray-500" />
                 </div>
                 <input
                   type="email"
-                  name="email"
                   required
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="block w-full pl-10 pr-3 py-3 border border-white/10 rounded-xl bg-black/20 text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 transition-all"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2.5 border border-white/10 rounded-lg leading-5 bg-gray-900/50 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
                   placeholder="you@example.com"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-text-muted" />
+                  <Lock className="h-5 w-5 text-gray-500" />
                 </div>
                 <input
                   type="password"
-                  name="password"
                   required
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="block w-full pl-10 pr-3 py-3 border border-white/10 rounded-xl bg-black/20 text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 transition-all"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2.5 border border-white/10 rounded-lg leading-5 bg-gray-900/50 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
                   placeholder="••••••••"
                 />
               </div>
@@ -119,36 +151,37 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white gradient-bg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 transition-all mt-6"
+              disabled={isLoading}
+              className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-lg shadow-blue-500/20 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
-              {loading ? (
+              {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  {isLogin ? 'Sign In' : 'Create Account'}
-                  <ArrowRight className="w-4 h-4" />
+                  {isRegister ? 'Create account' : 'Sign in'}
+                  <ArrowRight className="ml-2 w-4 h-4" />
                 </>
               )}
             </button>
           </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-sm text-text-secondary">
-              {isLogin ? "Don't have an account? " : "Already have an account? "}
-              <button
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setError('');
-                }}
-                className="font-medium text-brand-400 hover:text-brand-300 transition-colors focus:outline-none"
-              >
-                {isLogin ? 'Sign up' : 'Sign in'}
-              </button>
-            </p>
+          
+          <div className="mt-8">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-transparent text-gray-500 glass-panel border-none">
+                  Secure access
+                </span>
+              </div>
+            </div>
           </div>
+          
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default LoginPage;
