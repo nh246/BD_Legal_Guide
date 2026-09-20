@@ -12,7 +12,7 @@ const Sidebar = ({ currentSessionId, onSelectSession, onNewSession }) => {
     if (!token) return;
     try {
       setIsLoading(true);
-      const response = await api.get('/chat/sessions');
+      const response = await api.get('/sessions');
       setSessions(response.data);
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
@@ -37,7 +37,7 @@ const Sidebar = ({ currentSessionId, onSelectSession, onNewSession }) => {
     if (!confirm('Are you sure you want to delete this chat?')) return;
     
     try {
-      await api.delete(`/chat/sessions/${sessionId}`);
+      await api.delete(`/sessions/${sessionId}`);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       if (currentSessionId === sessionId) {
         onNewSession();

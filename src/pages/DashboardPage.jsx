@@ -13,7 +13,7 @@ const DashboardPage = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await api.get('/chat/sessions');
+        const response = await api.get('/sessions');
         setSessions(response.data);
       } catch (error) {
         console.error("Failed to fetch sessions for dashboard", error);

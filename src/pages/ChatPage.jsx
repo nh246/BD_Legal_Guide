@@ -26,7 +26,7 @@ const ChatPage = () => {
     try {
       setSessionId(id);
       setIsLoading(true);
-      const response = await api.get(`/chat/sessions/${id}/history`);
+      const response = await api.get(`/sessions/${id}/messages`);
       setMessages(response.data);
     } catch (error) {
       console.error('Failed to load chat history:', error);
@@ -55,7 +55,7 @@ const ChatPage = () => {
     setIsLoading(true);
 
     try {
-      const response = await api.post('/chat/query', {
+      const response = await api.post('/query', {
         query,
         session_id: sessionId
       });
