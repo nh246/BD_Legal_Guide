@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Send, Bot, User as UserIcon, Zap, FileText, Sparkles, Scale, MessageSquare, AlertCircle } from 'lucide-react';
+import { Send, Bot, User as UserIcon, Zap, FileText, Sparkles, Scale, MessageSquare, AlertCircle, Cpu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import ProPaywallModal from '../../components/ui/ProPaywallModal';
 import api, { asList, getErrorMessage } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
+import { toast } from '../../store/useToastStore';
 
 const SUGGESTIONS = [
   'What is the punishment for theft under the Penal Code?',
@@ -27,6 +28,7 @@ export default function ChatPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [chatError, setChatError] = useState(null);
+  const [llmConfig, setLlmConfig] = useState(null);
   const messagesEndRef = useRef(null);
 
   const isPro = user?.plan === 'pro' || user?.is_pro;
@@ -39,6 +41,18 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, isTyping]);
 
+  // Fetch active LLM config on mount
+  useEffect(() => {
+    api.get('/admin/llm-config')
+      .then((res) => setLlmConfig(res.data))
+      .catch(() => {
+        setLlmConfig({
+          model_name: 'gemini-1.5-flash',
+          disclaimer: 'This information is for educational purposes and not a substitute for professional legal advice under Bangladesh law.'
+        });
+      });
+  }, []);
+
   // Load chat sessions
   const loadSessions = async () => {
     setSessionsLoading(true);
@@ -46,7 +60,7 @@ export default function ChatPage() {
       const res = await api.get('/chat/sessions');
       setSessions(asList(res.data, 'sessions'));
     } catch {
-      // Backend not yet ready - sessions list will remain empty
+      // Backend not yet ready or empty
     } finally {
       setSessionsLoading(false);
     }
@@ -64,7 +78,7 @@ export default function ChatPage() {
           setMessages(asList(res.data, 'messages'));
         })
         .catch(() => {
-          // If session not found on server, fallback to current in-memory messages
+          // If session not found, keep existing messages
         });
     }
   }, [activeSessionId]);
@@ -105,9 +119,8 @@ export default function ChatPage() {
 
     try {
       const res = await api.post('/chat', {
-        message: userText,
-        session_id: activeSessionId,
-        mode: isRagMode ? 'rag' : 'standard',
+        session_id: activeSessionId || null,
+        content: userText,
       });
 
       const reply = res.data;
@@ -120,13 +133,20 @@ export default function ChatPage() {
         {
           id: reply.id || Date.now().toString(),
           role: 'assistant',
-          content: reply.content || reply.response || reply.message || 'No response generated.',
+          content: reply.content || reply.reply || reply.response || reply.message || 'No response generated.',
           citations: reply.citations || [],
+          disclaimer: reply.disclaimer || llmConfig?.disclaimer,
           triage: reply.triage || null,
         },
       ]);
+      loadSessions();
     } catch (err) {
-      setChatError(getErrorMessage(err, 'Could not reach server'));
+      const is502 = err.response?.status === 502;
+      const errorMsg = is502
+        ? 'AI service temporarily unavailable. Please try again.'
+        : getErrorMessage(err, 'AI service temporarily unavailable. Please try again.');
+      toast('AI service temporarily unavailable. Please try again.', 'error');
+      setChatError(errorMsg);
     } finally {
       setIsTyping(false);
     }
@@ -138,6 +158,9 @@ export default function ChatPage() {
       handleSend();
     }
   };
+
+  const currentModelDisplay = llmConfig?.model_name || llmConfig?.model || 'Gemini 1.5 Flash';
+  const disclaimerText = llmConfig?.disclaimer || 'This information is for educational purposes and not a substitute for professional legal advice.';
 
   return (
     <div className="flex h-[calc(100vh-64px)] bg-zinc-950 overflow-hidden">
@@ -182,8 +205,16 @@ export default function ChatPage() {
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Top Bar */}
+        {/* Top Bar with Model Name & Mode */}
         <div className="h-14 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950/80 backdrop-blur-sm shrink-0 z-10">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <Cpu className="h-3.5 w-3.5 text-blue-400" />
+              <span>Model: <strong className="text-zinc-100">{currentModelDisplay}</strong></span>
+            </span>
+          </div>
+
           <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-full p-1">
             <button
               onClick={() => isRagMode && handleToggleRag()}
@@ -212,7 +243,10 @@ export default function ChatPage() {
                 <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-xl" />
                 <Scale className="h-10 w-10 text-blue-500 relative z-10" />
               </div>
-              <h2 className="text-2xl font-bold text-zinc-50 mb-8">How can I help you with Bangladesh Law today?</h2>
+              <h2 className="text-2xl font-bold text-zinc-50 mb-3">How can I help you with Bangladesh Law today?</h2>
+              <p className="text-sm text-zinc-400 mb-8 max-w-md">
+                Ask questions regarding Penal Code, Family Law, Corporate registration, or Property disputes.
+              </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
                 {SUGGESTIONS.map((sug, idx) => (
@@ -255,40 +289,17 @@ export default function ChatPage() {
                       )}
                     </div>
 
-                    {msg.role === 'assistant' && (
-                      <div className="w-full mt-3 space-y-3">
-                        {msg.citations && msg.citations.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {msg.citations.map((cit, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-1.5 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 text-xs font-medium"
-                              >
-                                <FileText className="h-3 w-3" />
-                                {cit}
-                              </div>
-                            ))}
+                    {msg.role === 'assistant' && msg.citations && msg.citations.length > 0 && (
+                      <div className="w-full mt-3 flex flex-wrap gap-2">
+                        {msg.citations.map((cit, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-1.5 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 text-xs font-medium"
+                          >
+                            <FileText className="h-3 w-3" />
+                            {cit}
                           </div>
-                        )}
-
-                        {msg.triage && (
-                          <div className="bg-blue-500/5 border border-blue-500/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
-                            <div className="flex items-center gap-3">
-                              <div className="h-8 w-8 rounded-lg bg-blue-600/10 flex items-center justify-center shrink-0">
-                                <Sparkles className="h-4 w-4 text-blue-500" />
-                              </div>
-                              <span className="text-sm font-medium text-zinc-200">
-                                This matter requires professional representation.
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => navigate(`/client/lawyers?specialty=${msg.triage.specialty}`)}
-                              className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors"
-                            >
-                              Book a verified {msg.triage.specialty} Lawyer
-                            </button>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     )}
                   </div>
@@ -320,14 +331,20 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Composer Area */}
+        {/* Composer Area with Prominent Disclaimer */}
         <div className="p-4 sm:p-6 pt-0 bg-zinc-950">
+          {/* Prominent Legal Disclaimer Banner */}
+          <div className="max-w-4xl mx-auto mb-3 px-3.5 py-2 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs text-zinc-400 flex items-start gap-2.5 shadow-sm">
+            <AlertCircle className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{disclaimerText}</span>
+          </div>
+
           <div className="max-w-4xl mx-auto relative flex items-end gap-3 bg-zinc-900 border border-zinc-800 rounded-2xl focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all p-2 pl-4">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask a legal question..."
+              placeholder="Ask a Bangladesh legal question..."
               className="w-full bg-transparent text-zinc-50 placeholder-zinc-500 py-3 min-h-[44px] max-h-[160px] resize-none outline-none text-sm scrollbar-thin scrollbar-thumb-zinc-700"
               rows={input.split('\n').length > 1 ? Math.min(5, input.split('\n').length) : 1}
             />
@@ -340,9 +357,6 @@ export default function ChatPage() {
               <Send className="h-4 w-4 ml-0.5" />
             </button>
           </div>
-          <p className="text-center text-xs text-zinc-600 mt-3">
-            AI can make mistakes. For critical legal matters, always consult a verified lawyer.
-          </p>
         </div>
       </div>
 
