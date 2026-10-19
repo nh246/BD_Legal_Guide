@@ -1,45 +1,85 @@
-import React from 'react';
-import { Users, ShieldCheck } from 'lucide-react';
-import Card, { CardContent } from '../../components/ui/Card';
+import React, { useMemo, useState } from 'react';
+import { Users, Search } from 'lucide-react';
+import Card from '../../components/ui/Card';
+import Badge from '../../components/ui/Badge';
+import EmptyState from '../../components/ui/EmptyState';
+import { LoadingState, ErrorState } from '../../components/ui/PageStates';
+import useApi from '../../lib/useApi';
+import { asList } from '../../lib/api';
 
 export default function AdminUsers() {
-  return (
-    <div className="p-4 md:p-8 h-full flex flex-col">
-      <div className="max-w-6xl mx-auto w-full space-y-6 flex-1 flex flex-col">
-        
-        {/* Header Card */}
-        <Card className="bg-zinc-900 border-zinc-800">
-          <CardContent className="p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-                <Users className="h-6 w-6 text-blue-500" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-zinc-50">User Management</h1>
-                <p className="text-sm text-zinc-400 mt-1">Manage client and lawyer accounts.</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg shrink-0">
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
-              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">USER_MANAGEMENT</span>
-            </div>
-          </CardContent>
-        </Card>
+  const { data, loading, error, reload } = useApi('/admin/users');
+  const [search, setSearch] = useState('');
 
-        {/* Empty State */}
-        <div className="flex-1 min-h-[400px] border-2 border-dashed border-zinc-800 rounded-2xl flex items-center justify-center p-8 bg-zinc-950/50">
-          <div className="text-center max-w-md animate-in zoom-in-95 duration-500">
-            <div className="h-20 w-20 bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl border border-zinc-800">
-              <Users className="h-10 w-10 text-zinc-500" />
-            </div>
-            <h3 className="text-xl font-bold text-zinc-50 mb-2">Module UI in active development</h3>
-            <p className="text-zinc-400 text-sm leading-relaxed">
-              Your access credentials have been successfully verified. The data grid and management tools for this module will be available in the next release cycle.
-            </p>
-          </div>
+  const users = useMemo(() => {
+    const term = search.toLowerCase();
+    return asList(data, 'users').filter((u) =>
+      `${u.name || ''} ${u.email || ''} ${u.role || ''}`.toLowerCase().includes(term)
+    );
+  }, [data, search]);
+
+  return (
+    <div className="p-4 md:p-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-50">User Management</h1>
+          <p className="text-sm text-zinc-400 mt-1">Manage client and lawyer accounts.</p>
         </div>
 
+        {loading ? (
+          <LoadingState label="Loading users..." />
+        ) : error ? (
+          <ErrorState error={error} onRetry={reload} />
+        ) : asList(data, 'users').length === 0 ? (
+          <EmptyState icon={Users} title="No users yet" description="Registered accounts will appear here." />
+        ) : (
+          <Card className="overflow-hidden">
+            <div className="p-4 border-b border-zinc-800 bg-zinc-900/50">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                <input
+                  id="admin-users-search"
+                  type="text"
+                  placeholder="Search by name, email or role..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-zinc-900/50 text-zinc-400 border-b border-zinc-800">
+                  <tr>
+                    <th className="px-6 py-4 font-medium">Name</th>
+                    <th className="px-6 py-4 font-medium">Email</th>
+                    <th className="px-6 py-4 font-medium">Role</th>
+                    <th className="px-6 py-4 font-medium">Status</th>
+                    <th className="px-6 py-4 font-medium">Joined</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {users.length === 0 ? (
+                    <tr><td colSpan={5} className="px-6 py-10 text-center text-zinc-500">No users match your search.</td></tr>
+                  ) : users.map((u) => (
+                    <tr key={u.id} className="hover:bg-zinc-800/30 transition-colors">
+                      <td className="px-6 py-4 font-medium text-zinc-50">{u.name || '—'}</td>
+                      <td className="px-6 py-4 text-zinc-400">{u.email}</td>
+                      <td className="px-6 py-4 text-zinc-300 capitalize">{u.role}</td>
+                      <td className="px-6 py-4">
+                        {u.is_active === false || u.status === 'suspended'
+                          ? <Badge variant="danger">Suspended</Badge>
+                          : <Badge variant="success">Active</Badge>}
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );

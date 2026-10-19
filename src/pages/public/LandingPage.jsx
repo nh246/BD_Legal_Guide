@@ -39,12 +39,12 @@ export default function LandingPage() {
             The first 3-sided legal marketplace powered by dual-mode AI. Get instant answers from the BD Penal Code or book consultations with Bar Council verified experts.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link to="/chat">
+            <Link to="/client/chat">
               <Button size="lg" className="w-full sm:w-auto gap-2">
                 Start Chatting <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
-            <Link to="/lawyers">
+            <Link to="/client/lawyers">
               <Button variant="secondary" size="lg" className="w-full sm:w-auto gap-2">
                 Find a Lawyer <Scale className="h-4 w-4" />
               </Button>

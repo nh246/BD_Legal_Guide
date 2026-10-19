@@ -1,67 +1,78 @@
 import React from 'react';
-import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom';
-import useAdminStore, { PERMISSIONS } from '../../store/useAdminStore';
-import { 
-  Shield, 
-  Users, 
-  FileText, 
-  MessageSquareWarning, 
-  Building2, 
-  Activity, 
-  Flag, 
-  Lock 
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import {
+  Activity,
+  Users,
+  Shield,
+  Scale,
+  Building2,
+  FileText,
+  Cpu,
+  CreditCard,
+  History,
+  Lock,
 } from 'lucide-react';
+import useAuthStore from '../../store/useAuthStore';
 
+/**
+ * adminOnly: visible to role "admin" only.
+ * scope:     moderators see the link only if user.scopes includes it. Admins see everything.
+ */
 const ADMIN_LINKS = [
-  { path: '/admin', label: 'Overview', icon: Activity, scope: 'ANALYTICS_VIEW', exact: true },
-  { path: '/admin/verifications', label: 'Verifications', icon: Shield, scope: 'VERIFICATION_REVIEW' },
+  { path: '/admin', label: 'Dashboard', icon: Activity, scope: 'ANALYTICS_VIEW', exact: true },
   { path: '/admin/users', label: 'Users', icon: Users, scope: 'USER_MANAGEMENT' },
-  { path: '/admin/queries', label: 'Query Logs', icon: FileText, scope: 'QUERY_LOG_VIEW' },
-  { path: '/admin/complaints', label: 'Complaints', icon: MessageSquareWarning, scope: 'COMPLAINT_HANDLING' },
+  { path: '/admin/moderators', label: 'Moderators', icon: Shield, adminOnly: true },
+  { path: '/admin/lawyers', label: 'Lawyers', icon: Scale, scope: 'VERIFICATION_REVIEW' },
   { path: '/admin/firms', label: 'Firms', icon: Building2, scope: 'FIRM_MANAGEMENT' },
-  { path: '/admin/moderation', label: 'Moderation', icon: Flag, scope: 'CONTENT_MODERATION' },
+  { path: '/admin/queries', label: 'Queries', icon: FileText, scope: 'QUERY_LOG_VIEW' },
+  { path: '/admin/llm-config', label: 'LLM Config', icon: Cpu, adminOnly: true },
+  { path: '/admin/payments', label: 'Payments', icon: CreditCard, adminOnly: true },
+  { path: '/admin/audit-logs', label: 'Audit Logs', icon: History, scope: 'AUDIT_LOG_VIEW' },
 ];
 
+export function canSeeLink(user, link) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (link.adminOnly) return false;
+  if (user.role !== 'moderator') return false;
+  const scopes = Array.isArray(user.scopes) ? user.scopes : [];
+  return !link.scope || scopes.includes(link.scope);
+}
+
 export default function AdminLayout() {
-  const { adminRole, hasScope, getCurrentActor } = useAdminStore();
+  const { user } = useAuthStore();
   const location = useLocation();
 
-  // Find if current route requires a specific scope
-  const currentLink = ADMIN_LINKS.find(link => 
-    link.exact ? location.pathname === link.path : location.pathname.startsWith(link.path)
-  );
+  const visibleLinks = ADMIN_LINKS.filter((link) => canSeeLink(user, link));
 
-  let isAuthorized = true;
-  let missingScope = null;
+  // Find the link matching the current route (longest match first)
+  const currentLink = [...ADMIN_LINKS]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((link) => (link.exact ? location.pathname === link.path : location.pathname.startsWith(link.path)));
 
-  if (currentLink && !hasScope(currentLink.scope)) {
-    isAuthorized = false;
-    missingScope = currentLink.scope;
-  }
-
-  // Admin only routes that aren't in the sidebar per se (Moderators, Audit Logs)
-  // We'll add them to the sidebar only for ADMIN
-  if ((location.pathname.startsWith('/admin/moderators') || location.pathname.startsWith('/admin/audit-logs')) && adminRole !== 'ADMIN') {
-    isAuthorized = false;
-    missingScope = 'SUPERUSER_ONLY';
-  }
+  const isAuthorized = !currentLink || canSeeLink(user, currentLink);
+  const missing = currentLink?.adminOnly ? 'ADMIN_ONLY' : currentLink?.scope;
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-zinc-950 flex flex-col md:flex-row">
-      
+
       {/* Sidebar Navigation */}
       <div className="w-full md:w-64 border-r border-zinc-800 bg-zinc-950/50 p-4 shrink-0 flex flex-col gap-1">
-        
+
         <div className="mb-6 px-2">
           <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
-            {adminRole === 'ADMIN' ? 'Superuser' : 'Moderator'}
+            {user?.role === 'admin' ? 'Superuser' : 'Moderator'}
           </div>
-          <div className="text-sm font-medium text-zinc-300">
-            {getCurrentActor()}
+          <div className="text-sm font-medium text-zinc-300 truncate">
+            {user?.name || user?.email}
           </div>
         </div>
 
-        {ADMIN_LINKS.filter(link => hasScope(link.scope)).map(link => (
+        {visibleLinks.length === 0 && (
+          <p className="px-3 text-xs text-zinc-500 italic">No modules assigned to your account.</p>
+        )}
+
+        {visibleLinks.map((link) => (
           <NavLink
             key={link.path}
             to={link.path}
@@ -73,29 +84,6 @@ export default function AdminLayout() {
             <link.icon className="h-4 w-4" /> {link.label}
           </NavLink>
         ))}
-
-        {adminRole === 'ADMIN' && (
-          <>
-            <div className="my-4 border-t border-zinc-800"></div>
-            <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 px-2">Administration</div>
-            <NavLink
-              to="/admin/moderators"
-              className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-              }`}
-            >
-              <Users className="h-4 w-4" /> Staff Management
-            </NavLink>
-            <NavLink
-              to="/admin/audit-logs"
-              className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-              }`}
-            >
-              <FileText className="h-4 w-4" /> Audit Logs
-            </NavLink>
-          </>
-        )}
       </div>
 
       {/* Main Content Area */}
@@ -111,7 +99,7 @@ export default function AdminLayout() {
                 You do not have the required permissions to view this module.
               </p>
               <div className="inline-flex bg-zinc-950 border border-zinc-800 px-4 py-2 rounded-lg text-xs font-mono text-zinc-300">
-                Requires: <span className="text-red-400 ml-2">{missingScope}</span>
+                Requires: <span className="text-red-400 ml-2">{missing}</span>
               </div>
             </div>
           </div>
