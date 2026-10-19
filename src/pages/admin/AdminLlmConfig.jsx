@@ -10,18 +10,22 @@ import { toast } from '../../store/useToastStore';
 
 export default function AdminLlmConfig() {
   const { data, loading, error, reload } = useApi('/admin/llm-config');
-  const [model, setModel] = useState('');
-  const [temperature, setTemperature] = useState('0.2');
+  const [provider, setProvider] = useState('gemini');
+  const [modelName, setModelName] = useState('gemini-1.5-flash');
+  const [temperature, setTemperature] = useState('0.7');
   const [maxTokens, setMaxTokens] = useState('2048');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [disclaimer, setDisclaimer] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (data) {
-      setModel(data.model || 'gemini-1.5-pro');
-      setTemperature(data.temperature?.toString() || '0.2');
+      setProvider(data.provider || 'gemini');
+      setModelName(data.model_name || data.model || 'gemini-1.5-flash');
+      setTemperature(data.temperature?.toString() || '0.7');
       setMaxTokens(data.max_tokens?.toString() || '2048');
       setSystemPrompt(data.system_prompt || '');
+      setDisclaimer(data.disclaimer || '');
     }
   }, [data]);
 
@@ -29,16 +33,22 @@ export default function AdminLlmConfig() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/admin/llm-config', {
-        model,
+      const formData = {
+        provider,
+        model_name: modelName,
+        model: modelName,
         temperature: parseFloat(temperature),
         max_tokens: parseInt(maxTokens, 10),
         system_prompt: systemPrompt,
-      });
-      toast('LLM Configuration updated', 'success');
+        disclaimer,
+        is_active: true,
+      };
+
+      await api.put('/admin/llm-config', formData);
+      toast('Model configuration updated', 'success');
       reload();
     } catch (err) {
-      toast(getErrorMessage(err), 'error');
+      toast(getErrorMessage(err, 'Failed to update LLM configuration'), 'error');
     } finally {
       setSaving(false);
     }
@@ -49,7 +59,9 @@ export default function AdminLlmConfig() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-zinc-50">LLM Configuration</h1>
-          <p className="text-sm text-zinc-400 mt-1">Configure model provider, temperature, and default legal prompt guidelines.</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            Configure active AI model provider, sampling parameters, system prompts, and legal disclaimers.
+          </p>
         </div>
 
         {loading ? (
@@ -67,42 +79,81 @@ export default function AdminLlmConfig() {
             <CardContent>
               <form onSubmit={handleSave} className="space-y-6">
                 <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Provider Select */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-zinc-300">
+                      LLM Provider
+                    </label>
+                    <select
+                      id="llm-provider-select"
+                      value={provider}
+                      onChange={(e) => setProvider(e.target.value)}
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-50 p-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
+                    >
+                      <option value="mock">Mock (Offline Testing)</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
+
+                  {/* Model Name */}
                   <Input
-                    label="Model"
-                    placeholder="e.g. gemini-1.5-pro"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    label="Model Name"
+                    placeholder="e.g. gemini-1.5-flash, mock-model"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
                   />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Temperature */}
                   <Input
                     label="Temperature"
                     type="number"
                     step="0.1"
                     min="0"
                     max="1"
-                    placeholder="0.2"
+                    placeholder="0.7"
                     value={temperature}
                     onChange={(e) => setTemperature(e.target.value)}
                   />
+
+                  {/* Max Tokens */}
+                  <Input
+                    label="Max Tokens"
+                    type="number"
+                    placeholder="2048"
+                    value={maxTokens}
+                    onChange={(e) => setMaxTokens(e.target.value)}
+                  />
                 </div>
 
-                <Input
-                  label="Max Tokens"
-                  type="number"
-                  placeholder="2048"
-                  value={maxTokens}
-                  onChange={(e) => setMaxTokens(e.target.value)}
-                />
-
+                {/* System Prompt */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-zinc-300">
                     System Prompt / Guardrails
                   </label>
                   <textarea
-                    rows={6}
-                    className="w-full rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-50 placeholder-zinc-500 p-3 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
-                    placeholder="Define the behavior of the Bangladesh Legal AI assistant..."
+                    rows={5}
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-50 placeholder-zinc-500 p-3 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none resize-y"
+                    placeholder="Define the behavior and legal guidelines of the assistant..."
                     value={systemPrompt}
                     onChange={(e) => setSystemPrompt(e.target.value)}
+                  />
+                </div>
+
+                {/* Disclaimer */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-300">
+                    Legal Disclaimer Text
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-50 placeholder-zinc-500 p-3 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none resize-y"
+                    placeholder="e.g. This advice is educational and does not constitute formal attorney-client privilege..."
+                    value={disclaimer}
+                    onChange={(e) => setDisclaimer(e.target.value)}
                   />
                 </div>
 
