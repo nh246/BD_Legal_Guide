@@ -1,9 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { MapPin, Star, ShieldCheck, BadgeCheck, Clock, Share2, Calendar as CalendarIcon, CheckCircle2, GraduationCap, Languages, FileText } from 'lucide-react';
+import {
+  MapPin,
+  Star,
+  ShieldCheck,
+  BadgeCheck,
+  Clock,
+  Share2,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  GraduationCap,
+  Languages,
+  FileText,
+  MessageSquare,
+  Lock,
+  Send,
+} from 'lucide-react';
 import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import EmptyState from '../../components/ui/EmptyState';
+import Modal from '../../components/ui/Modal';
+import ProPaywallModal from '../../components/ui/ProPaywallModal';
 import useApi from '../../lib/useApi';
+import api, { getErrorMessage } from '../../lib/api';
+import useAuthStore from '../../store/useAuthStore';
+import { toast } from '../../store/useToastStore';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
@@ -11,11 +31,103 @@ const TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '1
 export default function LawyerProfilePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, token } = useAuthStore();
 
   const { data: lawyer, loading, error, reload } = useApi(id ? `/lawyers/${id}` : null);
+  const { data: subData } = useApi(token ? '/subscriptions/mine' : null);
+
+  const isPro = subData?.status === 'active' && subData?.plan_code === 'user_pro';
 
   const [activeTab, setActiveTab] = useState('about');
   const [selectedSlot, setSelectedSlot] = useState(null);
+
+  // Direct messaging states
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [paywallMessage, setPaywallMessage] = useState(
+    'Direct messaging with verified lawyers is a Pro feature.'
+  );
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const loadThread = async () => {
+    if (!id) return;
+    setMessagesLoading(true);
+    setMessagesError(null);
+    try {
+      const res = await api.get(`/messages/lawyer/${id}`);
+      const list = res.data?.messages || res.data || [];
+      setMessages(Array.isArray(list) ? list : []);
+    } catch (err) {
+      if (err.response?.status === 402) {
+        setShowMessageModal(false);
+        setPaywallMessage(
+          err.response.data?.message || 'Direct messaging with verified lawyers is a Pro feature.'
+        );
+        setShowPaywallModal(true);
+      } else {
+        setMessagesError(getErrorMessage(err, 'Failed to load message thread.'));
+      }
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showMessageModal && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, showMessageModal]);
+
+  const handleOpenMessaging = () => {
+    if (!token || !user) {
+      navigate(`/login?redirect=/client/lawyers/${id}`);
+      return;
+    }
+
+    if (!isPro) {
+      setPaywallMessage('Direct messaging with verified lawyers is a Pro feature.');
+      setShowPaywallModal(true);
+      return;
+    }
+
+    setShowMessageModal(true);
+    loadThread();
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || isSending) return;
+
+    const contentToSend = newMessage.trim();
+    setIsSending(true);
+    try {
+      const res = await api.post(`/messages/lawyer/${id}`, { content: contentToSend });
+      setNewMessage('');
+      if (res.data) {
+        setMessages((prev) => [...prev, res.data]);
+      } else {
+        loadThread();
+      }
+      toast('Message sent', 'success');
+    } catch (err) {
+      if (err.response?.status === 402) {
+        setShowMessageModal(false);
+        setPaywallMessage(
+          err.response.data?.message || 'Direct messaging with verified lawyers is a Pro feature.'
+        );
+        setShowPaywallModal(true);
+      } else {
+        toast(getErrorMessage(err, 'Failed to send message'), 'error');
+      }
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const getInitials = (name = '') =>
     name
@@ -151,12 +263,36 @@ export default function LawyerProfilePage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 mt-6 pt-6 border-t border-zinc-800/50">
+                <div className="flex flex-wrap items-center gap-3 mt-6 pt-6 border-t border-zinc-800/50">
                   <button
                     onClick={() => setActiveTab('availability')}
                     className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-500 text-white font-medium px-6 py-2.5 rounded-lg transition-colors shadow-lg shadow-blue-500/20"
                   >
                     Book Consultation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenMessaging}
+                    className={`flex items-center justify-center gap-2 font-medium px-5 py-2.5 rounded-lg transition-colors border shadow-sm ${
+                      isPro
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-50 border-zinc-700'
+                        : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800'
+                    }`}
+                  >
+                    {isPro ? (
+                      <>
+                        <MessageSquare className="h-4 w-4 text-blue-400" />
+                        <span>Message Lawyer</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4 text-amber-400" />
+                        <span>Message Lawyer</span>
+                        <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">
+                          PRO
+                        </span>
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => {
@@ -166,7 +302,7 @@ export default function LawyerProfilePage() {
                         navigator.clipboard.writeText(window.location.href);
                       }
                     }}
-                    className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-50 border border-zinc-700 font-medium px-4 py-2.5 rounded-lg transition-colors"
+                    className="flex items-center justify-center gap-2 bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 border border-zinc-800 font-medium px-4 py-2.5 rounded-lg transition-colors"
                   >
                     <Share2 className="h-4 w-4" /> <span className="hidden sm:inline">Share Profile</span>
                   </button>
@@ -349,9 +485,128 @@ export default function LawyerProfilePage() {
             >
               Continue to Booking
             </button>
+
+            <button
+              type="button"
+              onClick={handleOpenMessaging}
+              className="w-full mt-3 flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-800/70 text-zinc-300 border border-zinc-800 font-medium px-4 py-2.5 rounded-lg transition-colors text-sm"
+            >
+              {isPro ? (
+                <>
+                  <MessageSquare className="h-4 w-4 text-blue-400" />
+                  <span>Direct Message (Pro)</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="h-4 w-4 text-amber-400" />
+                  <span>Direct Message</span>
+                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
+                    PRO
+                  </span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Direct Message Thread Modal (Pro) */}
+      <Modal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        title={`Message with ${lawyer.name}`}
+        description="Direct consultation channel for Pro citizens. Inquire directly with this verified lawyer."
+        maxWidth="max-w-2xl"
+      >
+        <div className="flex flex-col h-[520px]">
+          {/* Thread messages scroll area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-zinc-950/80 rounded-xl border border-zinc-800/80">
+            {messagesLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <LoadingState message="Loading conversation history..." />
+              </div>
+            ) : messagesError ? (
+              <div className="h-full flex items-center justify-center">
+                <ErrorState error={messagesError} onRetry={loadThread} />
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-400">
+                <div className="h-12 w-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mb-3">
+                  <MessageSquare className="h-6 w-6" />
+                </div>
+                <p className="font-semibold text-zinc-200 text-sm">No messages yet</p>
+                <p className="text-xs text-zinc-500 mt-1 max-w-sm">
+                  Send a message below to start your direct consultation channel with {lawyer.name}.
+                </p>
+              </div>
+            ) : (
+              messages.map((msg) => {
+                const isMe = msg.sender_user_id === user?.id;
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1 px-1">
+                      <span className="text-[11px] font-medium text-zinc-400">
+                        {isMe ? 'You' : lawyer.name}
+                      </span>
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        {new Date(msg.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+                        isMe
+                          ? 'bg-blue-600 text-white rounded-br-none'
+                          : 'bg-zinc-800 text-zinc-100 rounded-bl-none border border-zinc-700/60'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                    {isMe && (
+                      <span className="text-[10px] text-zinc-500 mt-0.5 px-1">
+                        {msg.is_read ? 'Read' : 'Delivered'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Send Box */}
+          <form onSubmit={handleSendMessage} className="mt-4 flex items-center gap-2">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={`Write a message to ${lawyer.name}...`}
+              disabled={isSending}
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+            <button
+              type="submit"
+              disabled={!newMessage.trim() || isSending}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium px-5 py-3 rounded-xl transition-colors flex items-center gap-2 shrink-0 shadow-lg shadow-blue-500/20"
+            >
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          </form>
+        </div>
+      </Modal>
+
+      {/* Pro Paywall Modal */}
+      <ProPaywallModal
+        isOpen={showPaywallModal}
+        onClose={() => setShowPaywallModal(false)}
+        message={paywallMessage}
+      />
     </div>
   );
 }

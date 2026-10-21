@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, Scale, AlertTriangle } from 'lucide-react';
+import { Mail, Lock, Scale, AlertTriangle, Sparkles } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
@@ -22,6 +22,19 @@ export default function LoginPage() {
       const user = await login(email.trim(), password);
       const from = location.state?.from;
       navigate(from && from !== '/login' ? from : homeForRole(user?.role), { replace: true });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleQuickLogin = async (demoEmail) => {
+    setEmail(demoEmail);
+    setPassword('Password123!');
+    setError(null);
+    try {
+      const loggedUser = await login(demoEmail, 'Password123!');
+      const from = location.state?.from;
+      navigate(from && from !== '/login' ? from : homeForRole(loggedUser?.role), { replace: true });
     } catch (err) {
       setError(err.message);
     }
@@ -81,6 +94,67 @@ export default function LoginPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Quick Demo Logins Section */}
+        <div className="mt-6 bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+              <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+              <span>One-Click Demo Logins</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-mono">Password: Password123!</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('free_user@bdlegal.ai')}
+              className="text-left p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60 transition-all group cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">Free Client</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">FREE</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 truncate font-mono">free_user@bdlegal.ai</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('pro_user@bdlegal.ai')}
+              className="text-left p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all group cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs font-semibold text-zinc-200 group-hover:text-blue-300">Pro Client</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">PRO</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 truncate font-mono">pro_user@bdlegal.ai</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('free_lawyer@bdlegal.ai')}
+              className="text-left p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60 transition-all group cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">Free Lawyer</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">BASIC</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 truncate font-mono">free_lawyer@bdlegal.ai</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('pro_lawyer@bdlegal.ai')}
+              className="text-left p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 transition-all group cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Verified Lawyer</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">GOLD</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 truncate font-mono">pro_lawyer@bdlegal.ai</p>
+            </button>
+          </div>
+        </div>
 
         <p className="text-center text-sm text-zinc-400 mt-6">
           Don&apos;t have an account?{' '}

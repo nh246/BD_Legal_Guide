@@ -93,7 +93,10 @@ export default function BookingPage() {
       try {
         await api.post('/bookings', {
           lawyer_id: id,
+          schedule_id: selectedSlot?.schedule_id || selectedSlot?.id || undefined,
           slot: selectedSlot,
+          date: selectedSlot?.date || selectedSlot?.day,
+          start_time: selectedSlot?.start_time || selectedSlot?.time,
           case_brief: caseBrief,
         });
         setIsSuccess(true);

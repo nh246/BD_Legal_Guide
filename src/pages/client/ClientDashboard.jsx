@@ -11,11 +11,15 @@ import useAuthStore from '../../store/useAuthStore';
 import { asList } from '../../lib/api';
 
 export default function ClientDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const { data: bookingsData, loading, error, reload } = useApi('/bookings/mine');
+  const { data: subData } = useApi(token ? '/subscriptions/mine' : null);
 
   const bookings = asList(bookingsData, 'bookings');
   const upcomingBookings = bookings.filter((b) => b.status === 'confirmed' || b.status === 'pending');
+
+  const isPro = (subData?.status === 'active' && subData?.plan_code === 'user_pro') ||
+                user?.plan === 'user_pro' || user?.is_pro === true;
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-zinc-950 p-4 md:p-8">
@@ -23,7 +27,7 @@ export default function ClientDashboard() {
         {/* Welcome Banner */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-zinc-50">Welcome back, {user?.name || 'Client'}</h1>
+            <h1 className="text-3xl font-bold text-zinc-50">Welcome back, {user?.full_name || user?.name || 'Client'}</h1>
             <p className="text-zinc-400 mt-1">Manage your legal consultations and AI guidance sessions.</p>
           </div>
           <div className="flex gap-3">
@@ -61,7 +65,7 @@ export default function ClientDashboard() {
               </div>
               <div>
                 <p className="text-sm text-zinc-400 font-medium">Membership Tier</p>
-                <p className="text-2xl font-bold text-zinc-50 capitalize">{user?.plan || 'Free Plan'}</p>
+                <p className="text-2xl font-bold text-zinc-50">{isPro ? 'Pro Plan' : 'Free Plan'}</p>
               </div>
             </CardContent>
           </Card>
