@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Scale, Search, Check, X, ShieldCheck, UserCheck, AlertCircle } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Scale, Search, Check, X, ShieldCheck, UserCheck, AlertCircle, FileText, Eye } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
@@ -12,6 +12,56 @@ export default function AdminLawyers() {
   const [search, setSearch] = useState('');
   const [selectedLawyer, setSelectedLawyer] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Lawyer Submitted Documents (verification assets)
+  const [lawyerAssets, setLawyerAssets] = useState([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [viewingAssetId, setViewingAssetId] = useState(null);
+
+  useEffect(() => {
+    if (!selectedLawyer) {
+      setLawyerAssets([]);
+      return;
+    }
+    const targetId = selectedLawyer.user_id || selectedLawyer.id;
+    setAssetsLoading(true);
+    api.get(`/users/${targetId}/assets`)
+      .then((res) => {
+        const list = asList(res.data, 'assets');
+        setLawyerAssets(list);
+      })
+      .catch(() => {
+        setLawyerAssets([]);
+      })
+      .finally(() => {
+        setAssetsLoading(false);
+      });
+  }, [selectedLawyer]);
+
+  const verificationDocs = lawyerAssets.filter((a) => a.kind === 'verification');
+  const lawyerAvatar = lawyerAssets.find((a) => a.kind === 'avatar');
+
+  const formatBytes = (bytes) => {
+    if (!bytes || bytes <= 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleViewDocument = async (assetId, filename) => {
+    setViewingAssetId(assetId);
+    try {
+      const res = await api.get(`/assets/${assetId}/file`, { responseType: 'blob' });
+      const mimeType = res.headers['content-type'] || 'application/pdf';
+      const blob = new Blob([res.data], { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to open document'), 'error');
+    } finally {
+      setViewingAssetId(null);
+    }
+  };
 
   const lawyers = useMemo(() => {
     const term = search.toLowerCase();
@@ -184,12 +234,25 @@ export default function AdminLawyers() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-xl font-bold text-zinc-50">{selectedLawyer.name}</h3>
-                {getStatusBadge(selectedLawyer.verification_status)}
+            <div className="flex items-center gap-4">
+              {lawyerAvatar ? (
+                <img
+                  src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${lawyerAvatar.id}/file`}
+                  alt={selectedLawyer.name}
+                  className="h-14 w-14 rounded-full object-cover border-2 border-zinc-700 shadow-md shrink-0"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-full bg-blue-600/10 border-2 border-blue-500/20 text-blue-400 flex items-center justify-center text-lg font-bold shadow-md shrink-0">
+                  {(selectedLawyer.name || 'L')[0].toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <h3 className="text-xl font-bold text-zinc-50 truncate">{selectedLawyer.name}</h3>
+                  {getStatusBadge(selectedLawyer.verification_status)}
+                </div>
+                <p className="text-sm text-zinc-400 truncate">{selectedLawyer.specialization || 'General Practice'}</p>
               </div>
-              <p className="text-sm text-zinc-400">{selectedLawyer.specialization || 'General Practice'}</p>
             </div>
 
             <div className="space-y-3 bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-sm">
@@ -211,6 +274,59 @@ export default function AdminLawyers() {
                   {selectedLawyer.verification_paid ? 'Paid' : 'Unpaid'}
                 </span>
               </div>
+            </div>
+
+            {/* Submitted Documents for Verification */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-400" /> Submitted Documents
+                </h4>
+                {verificationDocs.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono">
+                    {verificationDocs.length} {verificationDocs.length === 1 ? 'file' : 'files'}
+                  </span>
+                )}
+              </div>
+
+              {assetsLoading ? (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 text-center text-xs text-zinc-500">
+                  Loading submitted documents...
+                </div>
+              ) : verificationDocs.length === 0 ? (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 text-center text-xs text-zinc-500">
+                  No verification documents submitted.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {verificationDocs.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 flex items-center gap-2.5">
+                        <FileText className="h-4 w-4 text-blue-400 shrink-0" />
+                        <div className="truncate">
+                          <p className="text-xs font-medium text-zinc-200 truncate">{doc.filename}</p>
+                          <p className="text-[11px] text-zinc-500 font-mono">
+                            {formatBytes(doc.size_bytes)} • {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleViewDocument(doc.id, doc.filename)}
+                        disabled={viewingAssetId === doc.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/20 transition-all shrink-0 disabled:opacity-50"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        {viewingAssetId === doc.id ? 'Opening...' : 'View'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-4 flex gap-3">

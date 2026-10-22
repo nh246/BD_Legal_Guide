@@ -12,8 +12,7 @@ export default function ProPaywallModal({ isOpen, onClose, message, onSuccess })
   const features = [
     "Unlimited AI chat queries and saved sessions",
     "Extended AI memory (20-turn context vs 5)",
-    "Legal document and image upload with AI analysis (PDF/TXT/PNG/JPG)",
-    "AI confidence score on every answer",
+    "Legal document and image upload with AI analysis",
     "Direct messaging with verified lawyers",
     "Priority handling of consultation requests"
   ];

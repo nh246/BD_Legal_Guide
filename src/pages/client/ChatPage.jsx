@@ -134,12 +134,26 @@ export default function ChatPage() {
     loadSessions();
   }, []);
 
+  useEffect(() => {
+    if (routeSessionId && routeSessionId !== activeSessionId) {
+      setActiveSessionId(routeSessionId);
+    }
+  }, [routeSessionId]);
+
   // Load active session messages if session id present
   useEffect(() => {
     if (activeSessionId) {
       api.get(`/chat/sessions/${activeSessionId}`)
         .then((res) => {
-          setMessages(asList(res.data, 'messages'));
+          const raw = asList(res.data, 'messages');
+          setMessages(
+            raw.map((m) => ({
+              ...m,
+              confidence: m.confidence != null ? m.confidence : (m.confidence_score != null ? m.confidence_score : null),
+              confidence_score: m.confidence_score != null ? m.confidence_score : (m.confidence != null ? m.confidence : null),
+              confidence_reason: m.confidence_reason || null,
+            }))
+          );
         })
         .catch(() => {
           // If session not found, keep existing messages
@@ -328,6 +342,8 @@ export default function ChatPage() {
           disclaimer: reply.disclaimer || llmConfig?.disclaimer,
           triage: reply.triage || null,
           usedDocuments: docsToSend.length > 0 ? docsToSend.map((d) => d.filename).join(', ') : null,
+          confidence: reply.confidence != null ? reply.confidence : (reply.confidence_score != null ? reply.confidence_score : null),
+          confidence_reason: reply.confidence_reason || null,
         },
       ]);
       loadSessions();
@@ -543,6 +559,33 @@ export default function ChatPage() {
                         <span>Answered using: <span className="font-semibold text-zinc-100">{msg.usedDocuments || msg.usedDocument}</span></span>
                       </div>
                     )}
+
+                    {msg.role === 'assistant' && (msg.confidence != null || msg.confidence_score != null) && (() => {
+                      const score = msg.confidence != null ? msg.confidence : msg.confidence_score;
+                      const tooltip = msg.confidence_reason
+                        ? `${msg.confidence_reason} Self-evaluated by the model. Not a guarantee of legal accuracy.`
+                        : 'Self-evaluated by the model. Not a guarantee of legal accuracy.';
+                      const badgeClass =
+                        score >= 80
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : score >= 60
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : 'bg-red-500/10 text-red-400 border-red-500/30';
+                      const dotClass =
+                        score >= 80 ? 'bg-emerald-400' : score >= 60 ? 'bg-amber-400' : 'bg-red-400';
+
+                      return (
+                        <div className="mt-2.5 flex items-center">
+                          <span
+                            title={tooltip}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-medium cursor-help transition-colors ${badgeClass}`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                            Model confidence: {score}/100
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

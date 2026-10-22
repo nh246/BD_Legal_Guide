@@ -65,7 +65,7 @@ export default function AdminQueries() {
                     onClick={() => setModeFilter(mode)}
                     className="capitalize text-xs"
                   >
-                    {mode === 'rag' ? 'RAG' : mode === 'standard' ? 'Standard' : 'All Modes'}
+                    {mode === 'rag' ? 'Pro' : mode === 'standard' ? 'Standard' : 'All Modes'}
                   </Button>
                 ))}
               </div>
@@ -103,7 +103,7 @@ export default function AdminQueries() {
                         <td className="px-6 py-4">
                           {q.mode === 'rag' ? (
                             <Badge variant="pro" className="gap-1 px-2">
-                              <Zap className="h-3 w-3" /> RAG
+                              <Zap className="h-3 w-3" /> Pro
                             </Badge>
                           ) : (
                             <Badge variant="default" className="gap-1 px-2 text-zinc-300 bg-zinc-800 border border-zinc-700">

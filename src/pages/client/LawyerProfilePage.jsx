@@ -15,13 +15,14 @@ import {
   MessageSquare,
   Lock,
   Send,
+  RefreshCw,
 } from 'lucide-react';
 import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import EmptyState from '../../components/ui/EmptyState';
 import Modal from '../../components/ui/Modal';
 import ProPaywallModal from '../../components/ui/ProPaywallModal';
 import useApi from '../../lib/useApi';
-import api, { getErrorMessage } from '../../lib/api';
+import api, { asList, getErrorMessage } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
 import { toast } from '../../store/useToastStore';
 
@@ -34,9 +35,20 @@ export default function LawyerProfilePage() {
   const { user, token } = useAuthStore();
 
   const { data: lawyer, loading, error, reload } = useApi(id ? `/lawyers/${id}` : null);
-  const { data: subData } = useApi(token ? '/subscriptions/mine' : null);
+  const { data: assetsData } = useApi(id ? `/users/${id}/assets` : null);
 
-  const isPro = subData?.status === 'active' && subData?.plan_code === 'user_pro';
+  const assets = asList(assetsData, 'assets');
+  const avatarAsset = assets.find((a) => a.kind === 'avatar');
+  const verificationDocs = assets.filter((a) => a.kind === 'verification');
+
+  const [plan, setPlan] = useState('user_free');
+
+  useEffect(() => {
+    api
+      .get('/chat/usage')
+      .then((r) => setPlan(r.data.plan || 'user_free'))
+      .catch(() => setPlan('user_free'));
+  }, []);
 
   const [activeTab, setActiveTab] = useState('about');
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -55,7 +67,7 @@ export default function LawyerProfilePage() {
   const messagesEndRef = useRef(null);
 
   const loadThread = async () => {
-    if (!id) return;
+    if (!id || plan === 'user_free') return;
     setMessagesLoading(true);
     setMessagesError(null);
     try {
@@ -65,10 +77,11 @@ export default function LawyerProfilePage() {
     } catch (err) {
       if (err.response?.status === 402) {
         setShowMessageModal(false);
-        setPaywallMessage(
-          err.response.data?.message || 'Direct messaging with verified lawyers is a Pro feature.'
-        );
+        const errorMsg =
+          err.response.data?.message || 'Direct messaging with verified lawyers is a Pro feature.';
+        setPaywallMessage(errorMsg);
         setShowPaywallModal(true);
+        toast(errorMsg, 'error');
       } else {
         setMessagesError(getErrorMessage(err, 'Failed to load message thread.'));
       }
@@ -83,15 +96,33 @@ export default function LawyerProfilePage() {
     }
   }, [messages, showMessageModal]);
 
+  // Periodic poll while thread modal is open
+  useEffect(() => {
+    if (!showMessageModal || !id || plan === 'user_free') return;
+    const interval = setInterval(() => {
+      api
+        .get(`/messages/lawyer/${id}`)
+        .then((res) => {
+          const list = res.data?.messages || res.data || [];
+          if (Array.isArray(list)) setMessages(list);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [showMessageModal, id, plan]);
+
   const handleOpenMessaging = () => {
     if (!token || !user) {
       navigate(`/login?redirect=/client/lawyers/${id}`);
       return;
     }
 
-    if (!isPro) {
-      setPaywallMessage('Direct messaging with verified lawyers is a Pro feature.');
+    if (plan === 'user_free') {
+      const msg = 'Direct messaging with verified lawyers is a Pro feature.';
+      setShowMessageModal(false);
+      setPaywallMessage(msg);
       setShowPaywallModal(true);
+      toast(msg, 'error');
       return;
     }
 
@@ -102,6 +133,15 @@ export default function LawyerProfilePage() {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || isSending) return;
+
+    if (plan === 'user_free') {
+      setShowMessageModal(false);
+      const msg = 'Direct messaging with verified lawyers is a Pro feature.';
+      setPaywallMessage(msg);
+      setShowPaywallModal(true);
+      toast(msg, 'error');
+      return;
+    }
 
     const contentToSend = newMessage.trim();
     setIsSending(true);
@@ -117,10 +157,11 @@ export default function LawyerProfilePage() {
     } catch (err) {
       if (err.response?.status === 402) {
         setShowMessageModal(false);
-        setPaywallMessage(
-          err.response.data?.message || 'Direct messaging with verified lawyers is a Pro feature.'
-        );
+        const serverMsg =
+          err.response.data?.message || 'Direct messaging with verified lawyers is a Pro feature.';
+        setPaywallMessage(serverMsg);
         setShowPaywallModal(true);
+        toast(serverMsg, 'error');
       } else {
         toast(getErrorMessage(err, 'Failed to send message'), 'error');
       }
@@ -216,11 +257,19 @@ export default function LawyerProfilePage() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 mb-8">
             <div className="flex flex-col sm:flex-row gap-6">
               <div
-                className={`shrink-0 h-24 w-24 sm:h-32 sm:w-32 rounded-full flex items-center justify-center text-3xl sm:text-4xl font-bold border-4 border-zinc-950 shadow-xl ${
+                className={`shrink-0 h-24 w-24 sm:h-32 sm:w-32 rounded-full flex items-center justify-center text-3xl sm:text-4xl font-bold border-4 border-zinc-950 shadow-xl overflow-hidden ${
                   lawyer.tier === 'gold' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-600/10 text-blue-500'
                 }`}
               >
-                {getInitials(lawyer.name)}
+                {avatarAsset ? (
+                  <img
+                    src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
+                    alt={lawyer.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  getInitials(lawyer.name)
+                )}
               </div>
 
               <div className="flex-1">
@@ -274,23 +323,23 @@ export default function LawyerProfilePage() {
                     type="button"
                     onClick={handleOpenMessaging}
                     className={`flex items-center justify-center gap-2 font-medium px-5 py-2.5 rounded-lg transition-colors border shadow-sm ${
-                      isPro
-                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-50 border-zinc-700'
-                        : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800'
+                      plan === 'user_free'
+                        ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-50 border-zinc-700'
                     }`}
                   >
-                    {isPro ? (
-                      <>
-                        <MessageSquare className="h-4 w-4 text-blue-400" />
-                        <span>Message Lawyer</span>
-                      </>
-                    ) : (
+                    {plan === 'user_free' ? (
                       <>
                         <Lock className="h-4 w-4 text-amber-400" />
                         <span>Message Lawyer</span>
                         <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">
                           PRO
                         </span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare className="h-4 w-4 text-blue-400" />
+                        <span>Message Lawyer</span>
                       </>
                     )}
                   </button>
@@ -374,6 +423,45 @@ export default function LawyerProfilePage() {
                     </ul>
                   </div>
                 </div>
+
+                {verificationDocs.length > 0 && (
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2 text-zinc-50 font-semibold">
+                        <ShieldCheck className="h-5 w-5 text-emerald-400" /> Verification Documents
+                      </div>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        Verified Bar Documents
+                      </span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {verificationDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between p-3.5 rounded-lg bg-zinc-950 border border-zinc-800/80 hover:border-zinc-700/80 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                            <FileText className="h-4 w-4 text-blue-400 shrink-0" />
+                            <div className="truncate">
+                              <p className="text-sm font-medium text-zinc-200 truncate">{doc.filename}</p>
+                              <p className="text-xs text-zinc-500 font-mono">
+                                {doc.size_bytes ? `${(doc.size_bytes / 1024).toFixed(1)} KB` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <a
+                            href={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${doc.id}/file`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/20 transition-all shrink-0"
+                          >
+                            View
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -491,18 +579,18 @@ export default function LawyerProfilePage() {
               onClick={handleOpenMessaging}
               className="w-full mt-3 flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-800/70 text-zinc-300 border border-zinc-800 font-medium px-4 py-2.5 rounded-lg transition-colors text-sm"
             >
-              {isPro ? (
-                <>
-                  <MessageSquare className="h-4 w-4 text-blue-400" />
-                  <span>Direct Message (Pro)</span>
-                </>
-              ) : (
+              {plan === 'user_free' ? (
                 <>
                   <Lock className="h-4 w-4 text-amber-400" />
                   <span>Direct Message</span>
-                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
+                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">
                     PRO
                   </span>
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="h-4 w-4 text-blue-400" />
+                  <span>Direct Message (Pro)</span>
                 </>
               )}
             </button>
@@ -519,6 +607,20 @@ export default function LawyerProfilePage() {
         maxWidth="max-w-2xl"
       >
         <div className="flex flex-col h-[520px]">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/60">
+            <span className="text-xs text-zinc-400">Direct Consultation Channel</span>
+            <button
+              type="button"
+              onClick={loadThread}
+              disabled={messagesLoading}
+              className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
+              title="Refresh messages"
+            >
+              <RefreshCw className={`h-3 w-3 ${messagesLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
           {/* Thread messages scroll area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-zinc-950/80 rounded-xl border border-zinc-800/80">
             {messagesLoading ? (
@@ -606,6 +708,21 @@ export default function LawyerProfilePage() {
         isOpen={showPaywallModal}
         onClose={() => setShowPaywallModal(false)}
         message={paywallMessage}
+        onSuccess={async () => {
+          try {
+            const res = await api.get('/chat/usage');
+            const updatedPlan = res.data?.plan || 'user_pro';
+            setPlan(updatedPlan);
+            if (updatedPlan !== 'user_free') {
+              setShowMessageModal(true);
+              loadThread();
+            }
+          } catch {
+            setPlan('user_pro');
+            setShowMessageModal(true);
+            loadThread();
+          }
+        }}
       />
     </div>
   );

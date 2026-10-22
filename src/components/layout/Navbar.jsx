@@ -3,9 +3,13 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Scale, Bell, LogOut, User, Menu, X, MessageSquare, Users, Calendar, LayoutDashboard } from 'lucide-react';
 import useAuthStore from '../../store/useAuthStore';
 import { homeForRole } from '../../lib/roles';
+import useApi from '../../lib/useApi';
+import { asList } from '../../lib/api';
 
 export default function Navbar() {
   const { user, token, logout } = useAuthStore();
+  const { data: assetsData } = useApi(token ? '/profile/assets' : null);
+  const avatarAsset = asList(assetsData, 'assets').find((a) => a.kind === 'avatar');
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
@@ -159,9 +163,17 @@ export default function Navbar() {
                 </button>
 
                 <div className="flex items-center gap-2 pl-2 border-l border-zinc-800 text-sm">
-                  <div className="h-8 w-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-semibold text-xs">
-                    {avatarLetter}
-                  </div>
+                  {avatarAsset ? (
+                    <img
+                      src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
+                      alt={displayName}
+                      className="h-7 w-7 rounded-full object-cover border border-zinc-700 shrink-0"
+                    />
+                  ) : (
+                    <div className="h-7 w-7 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-semibold text-xs shrink-0">
+                      {avatarLetter}
+                    </div>
+                  )}
                   <span className="text-zinc-300 font-medium hidden sm:inline max-w-[140px] truncate">
                     {displayName}
                   </span>

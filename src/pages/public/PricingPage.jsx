@@ -71,7 +71,13 @@ export default function PricingPage() {
     return activeTab === 'lawyer' ? isLawyerPlan : !isLawyerPlan;
   });
 
-  const activePlanCode = subData?.plan_code || (user?.role === 'user' ? 'user_free' : 'lawyer_basic');
+  const isUserPro = Boolean(
+    (subData?.status === 'active' && subData?.plan_code === 'user_pro') ||
+    user?.plan === 'user_pro' ||
+    user?.plan === 'pro' ||
+    user?.is_pro === true
+  );
+  const activePlanCode = isUserPro ? 'user_pro' : (subData?.plan_code || (user?.role === 'user' ? 'user_free' : 'lawyer_basic'));
   const isLawyerVerified = Boolean(lawyerData?.verification_paid || lawyerData?.verification_status === 'approved');
 
   // Handle plan purchase / upgrade / registration redirect
@@ -151,11 +157,21 @@ export default function PricingPage() {
 
     // User is on matching role
     if (activeTab === 'user') {
-      if (activePlanCode === plan.code) {
-        return { label: 'Current Plan', variant: 'secondary', disabled: true, isCurrent: true };
-      }
-      if (plan.code === 'user_pro') {
-        return { label: 'Upgrade to Pro', variant: 'primary', disabled: false };
+      if (isUserPro) {
+        if (plan.code === 'user_pro') {
+          return { label: 'Current Plan', variant: 'secondary', disabled: true, isCurrent: true };
+        }
+        if (plan.code === 'user_free') {
+          return { label: 'Downgrade unavailable', variant: 'secondary', disabled: true };
+        }
+      } else {
+        // Free user
+        if (plan.code === 'user_free') {
+          return { label: 'Current Plan', variant: 'secondary', disabled: true, isCurrent: true };
+        }
+        if (plan.code === 'user_pro') {
+          return { label: 'Upgrade to Pro', variant: 'primary', disabled: false };
+        }
       }
       return { label: 'Select Plan', variant: 'secondary', disabled: false };
     }
@@ -324,15 +340,13 @@ export default function PricingPage() {
                     </div>
 
                     <p className="text-sm text-zinc-400 max-w-xs mx-auto leading-relaxed">
-                      {plan.description || plan.desc || (
-                        plan.code === 'user_free'
-                          ? 'Essential Gemini AI legal assistance and lawyer discovery for citizens.'
-                          : plan.code === 'user_pro'
-                          ? 'Deep legal intelligence with BD Penal Code RAG citations & document analysis.'
-                          : plan.code === 'lawyer_basic'
-                          ? 'Standard directory presence and direct consultation inquiries from citizens.'
-                          : 'Official Bar Council verification, top ranking, and integrated client consultation suite.'
-                      )}
+                      {plan.code === 'user_free'
+                        ? 'Essential Gemini AI legal assistance and lawyer discovery for citizens.'
+                        : plan.code === 'user_pro'
+                        ? 'Deep legal intelligence with extended memory, document analysis and priority support.'
+                        : plan.code === 'lawyer_basic'
+                        ? 'Standard directory presence and direct consultation inquiries from citizens.'
+                        : 'Official Bar Council verification, top ranking, and integrated client consultation suite.'}
                     </p>
                   </CardHeader>
 
@@ -342,7 +356,12 @@ export default function PricingPage() {
                     </div>
 
                     <ul className="space-y-3.5">
-                      {(plan.code === 'user_pro' ? [
+                      {(plan.code === 'user_free' ? [
+                        "10 AI messages per day",
+                        "3 saved chat sessions",
+                        "5-turn AI memory",
+                        "Browse verified lawyer directory and book consultations"
+                      ] : plan.code === 'user_pro' ? [
                         "Unlimited AI chat queries and saved sessions",
                         "Extended AI memory (20-turn context vs 5)",
                         "Legal document and image upload with AI analysis (PDF/TXT/PNG/JPG)",
@@ -366,7 +385,9 @@ export default function PricingPage() {
                     <Button
                       id={`pricing-select-${plan.code}`}
                       className={`w-full py-2.5 text-sm font-semibold transition-all shadow-md ${
-                        isPopular
+                        btnState.disabled
+                          ? 'opacity-60 cursor-not-allowed bg-zinc-800 text-zinc-400 border border-zinc-700/60 shadow-none hover:bg-zinc-800'
+                          : isPopular
                           ? activeTab === 'lawyer'
                             ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-900/30'
                             : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30'
@@ -432,7 +453,7 @@ export default function PricingPage() {
         <div className="mt-16 max-w-3xl mx-auto text-center border-t border-zinc-900 pt-12">
           <h3 className="text-xl font-bold text-zinc-50 mb-3">Questions about pricing?</h3>
           <p className="text-sm text-zinc-400 mb-6">
-            Clients get free AI legal guidance and can upgrade to Pro for Penal Code RAG citations and document review. Lawyers can join our directory for free and upgrade to Verified status anytime.
+            Clients get free AI legal guidance and can upgrade to Pro for unlimited queries, document and image analysis, and direct access to verified lawyers. Lawyers can join our directory for free and upgrade to Verified status anytime.
           </p>
           <div className="flex justify-center gap-4">
             <Link to="/client/chat">

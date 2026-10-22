@@ -8,7 +8,7 @@ import Badge from '../../components/ui/Badge';
 export default function LandingPage() {
   const features = [
     { icon: Bot, title: "Standard Gemini AI", desc: "Free, general legal guidance powered by Gemini." },
-    { icon: Zap, title: "Pro RAG Mode", desc: "Verified answers directly from the BD Penal Code." },
+    { icon: Zap, title: "Pro AI Mode", desc: "Advanced legal guidance with extended memory." },
     { icon: ShieldCheck, title: "Verified Lawyers", desc: "Only Bar Council verified professionals." },
     { icon: FileText, title: "Document Analysis", desc: "Upload legal documents for AI-assisted review (Pro)." },
     { icon: Scale, title: "Smart Triage", desc: "AI detects when you need human counsel and connects you." },
