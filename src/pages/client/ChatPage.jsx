@@ -567,12 +567,12 @@ export default function ChatPage() {
                         : 'Self-evaluated by the model. Not a guarantee of legal accuracy.';
                       const badgeClass =
                         score >= 80
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
                           : score >= 60
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                          : 'bg-red-500/10 text-red-400 border-red-500/30';
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-red-500/20 text-red-300 border-red-500/30';
                       const dotClass =
-                        score >= 80 ? 'bg-emerald-400' : score >= 60 ? 'bg-amber-400' : 'bg-red-400';
+                        score >= 80 ? 'bg-green-400' : score >= 60 ? 'bg-amber-400' : 'bg-red-400';
 
                       return (
                         <div className="mt-2.5 flex items-center">
