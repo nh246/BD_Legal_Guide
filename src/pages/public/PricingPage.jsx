@@ -38,6 +38,9 @@ export default function PricingPage() {
     return 'user';
   });
 
+  // State for Pro billing cycle: 'monthly' | '6m' | '1y'
+  const [billingCycle, setBillingCycle] = useState('monthly');
+
   // Sync tab when query role or logged in user changes
   useEffect(() => {
     if (queryRole === 'lawyer' || queryRole === 'user') {
@@ -63,69 +66,106 @@ export default function PricingPage() {
 
   const [checkoutLoading, setCheckoutLoading] = useState(null);
 
-  // Filter plans based on the selected role tab:
-  // User tab -> only user plans ('user_free', 'user_pro')
-  // Lawyer tab -> only lawyer plans ('lawyer_basic', 'lawyer_verified')
-  const displayedPlans = allPlans.filter((plan) => {
-    const isLawyerPlan = (plan.target_role === 'lawyer') || (plan.code && plan.code.toLowerCase().includes('lawyer'));
-    return activeTab === 'lawyer' ? isLawyerPlan : !isLawyerPlan;
-  });
-
   const isUserPro = Boolean(
-    (subData?.status === 'active' && subData?.plan_code === 'user_pro') ||
+    (subData?.status === 'active' && (subData?.plan_code?.startsWith('user_pro') || subData?.plan_code === 'user_pro')) ||
+    user?.plan?.startsWith('user_pro') ||
     user?.plan === 'user_pro' ||
     user?.plan === 'pro' ||
     user?.is_pro === true
   );
-  const activePlanCode = isUserPro ? 'user_pro' : (subData?.plan_code || (user?.role === 'user' ? 'user_free' : 'lawyer_basic'));
+
   const isLawyerVerified = Boolean(lawyerData?.verification_paid || lawyerData?.verification_status === 'approved');
 
-  // Handle plan purchase / upgrade / registration redirect
-  const handleSelectPlan = async (plan) => {
-    // 1. If not logged in -> redirect to register with role and plan
+  // Dynamic pricing config for client Pro card
+  const proPricing = {
+    monthly: {
+      code: 'user_pro_monthly',
+      name: 'Pro Monthly',
+      price: '299',
+      period: '/ month',
+      subtext: null,
+    },
+    '6m': {
+      code: 'user_pro_6m',
+      name: 'Pro 6 Months',
+      price: '1,499',
+      period: '',
+      subtext: 'Save 16%',
+    },
+    '1y': {
+      code: 'user_pro_1y',
+      name: 'Pro 1 Year',
+      price: '2,499',
+      period: '',
+      subtext: 'Save 30%',
+    },
+  };
+
+  const currentPro = proPricing[billingCycle] || proPricing.monthly;
+
+  const freeBullets = [
+    '15 AI messages per month',
+    '3 saved chat sessions',
+    '3-turn conversation memory',
+    'Browse & book verified lawyers',
+    'Standard support',
+  ];
+
+  const proBullets = [
+    'Unlimited AI messages & sessions',
+    '20-turn conversation memory',
+    'Document & Image analysis (Vision)',
+    'Direct messaging with any lawyer',
+    'Priority booking queue',
+    'AI Confidence Scores',
+  ];
+
+  // Client Free selection
+  const handleSelectFree = () => {
     if (!token || !user) {
-      navigate(`/register?role=${activeTab}&plan=${plan.code}`);
+      navigate('/register?role=user&plan=user_free');
       return;
     }
-
-    // 2. Role restriction checks
-    if (activeTab === 'user' && user.role !== 'user' && user.role !== 'admin') {
+    if (user.role !== 'user' && user.role !== 'admin') {
       toast('This plan is for client accounts. You are logged in as a Lawyer.', 'error');
       return;
     }
-    if (activeTab === 'lawyer' && user.role !== 'lawyer' && user.role !== 'admin') {
-      toast('This plan is for verified lawyers only. You are currently logged in as a Client.', 'error');
+    if (isUserPro) {
+      toast('You are currently on the Pro plan.', 'info');
+      return;
+    }
+    toast('You already have access to the Free tier features.', 'info');
+  };
+
+  // Client Pro Upgrade / Purchase
+  const handleSelectPro = async () => {
+    const targetPlanCode = currentPro.code;
+
+    if (!token || !user) {
+      navigate(`/register?role=user&plan=${targetPlanCode}`);
       return;
     }
 
-    // 3. Current plan checks
-    if (plan.code === activePlanCode && plan.code !== 'lawyer_verified') {
-      toast('You are currently on this plan.', 'info');
-      return;
-    }
-    if (plan.code === 'lawyer_verified' && isLawyerVerified) {
-      toast('Your Bar Council Verified Badge is already active.', 'info');
+    if (user.role !== 'user' && user.role !== 'admin') {
+      toast('This plan is for client accounts. You are logged in as a Lawyer.', 'error');
       return;
     }
 
-    // 4. Free plan selection
-    if (plan.price === 0 || plan.price_monthly === 0) {
-      toast('You already have access to the Free tier features.', 'info');
+    if (isUserPro) {
+      toast('You currently have an active Pro subscription.', 'info');
       return;
     }
 
-    // 5. Checkout execution via demo payment provider
-    setCheckoutLoading(plan.code);
+    setCheckoutLoading(targetPlanCode);
     try {
-      if (plan.code === 'lawyer_verified') {
-        await api.post('/lawyer/verification-purchase', { provider: 'demo' });
-        toast('Bar Council Verified Badge activated! Your profile now has priority ranking.', 'success');
-        if (reloadLawyer) reloadLawyer();
-      } else {
-        await api.post('/subscriptions', { plan_code: plan.code, provider: 'demo' });
-        toast(`Successfully upgraded to ${plan.name}! Unlimited AI intelligence is now active.`, 'success');
-        if (reloadSub) reloadSub();
+      await api.post('/subscriptions', { plan_code: targetPlanCode, provider: 'demo' });
+      toast(`Successfully upgraded to ${currentPro.name}! Unlimited AI intelligence is now active.`, 'success');
+      try {
+        await useAuthStore.getState().fetchMe();
+      } catch {
+        // ignore
       }
+      if (reloadSub) reloadSub();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to process subscription checkout'), 'error');
     } finally {
@@ -133,60 +173,69 @@ export default function PricingPage() {
     }
   };
 
-  // Helper to determine CTA button text and state
-  const getButtonState = (plan) => {
-    const isMatchingRole = user && (
-      (activeTab === 'user' && (user.role === 'user' || user.role === 'admin')) ||
-      (activeTab === 'lawyer' && (user.role === 'lawyer' || user.role === 'admin'))
-    );
+  // Filter plans for lawyer tab
+  const lawyerPlans = allPlans.filter((plan) => {
+    return (plan.target_role === 'lawyer') || (plan.code && plan.code.toLowerCase().includes('lawyer'));
+  });
 
-    if (!user) {
-      if (plan.price === 0 || plan.price_monthly === 0) {
-        return { label: activeTab === 'user' ? 'Get Started Free' : 'Join Directory Free', variant: 'secondary', disabled: false };
-      }
-      return { label: activeTab === 'user' ? 'Upgrade to Pro' : 'Get Verified Badge', variant: 'primary', disabled: false };
+  const displayedLawyerPlans = lawyerPlans.length > 0 ? lawyerPlans : [
+    {
+      code: 'lawyer_basic',
+      name: 'Lawyer Basic',
+      price_monthly: 0,
+      features: [
+        'Directory Listing in Bangladesh Lawyer Registry',
+        'Receive Client Consultation Inquiries',
+        'Manual Schedule Management',
+        'Standard Profile Page',
+      ],
+    },
+    {
+      code: 'lawyer_verified',
+      name: 'Lawyer Verified Badge',
+      price_monthly: 999,
+      popular: true,
+      features: [
+        'Official Bar Council Verified Gold Badge',
+        'Top Placement in Lawyer Search Directory',
+        'Instant Video Consultation Link Generation',
+        'Direct Client Messaging Channel',
+        'Priority Payouts and Platform Support',
+      ],
+    },
+  ];
+
+  const handleSelectLawyerPlan = async (plan) => {
+    if (!token || !user) {
+      navigate(`/register?role=lawyer&plan=${plan.code}`);
+      return;
     }
 
-    if (!isMatchingRole) {
-      return {
-        label: activeTab === 'user' ? 'Client Account Required' : 'Lawyer Account Required',
-        variant: 'secondary',
-        disabled: true,
-      };
+    if (user.role !== 'lawyer' && user.role !== 'admin') {
+      toast('This plan is for verified lawyers only. You are currently logged in as a Client.', 'error');
+      return;
     }
 
-    // User is on matching role
-    if (activeTab === 'user') {
-      if (isUserPro) {
-        if (plan.code === 'user_pro') {
-          return { label: 'Current Plan', variant: 'secondary', disabled: true, isCurrent: true };
-        }
-        if (plan.code === 'user_free') {
-          return { label: 'Downgrade unavailable', variant: 'secondary', disabled: true };
-        }
-      } else {
-        // Free user
-        if (plan.code === 'user_free') {
-          return { label: 'Current Plan', variant: 'secondary', disabled: true, isCurrent: true };
-        }
-        if (plan.code === 'user_pro') {
-          return { label: 'Upgrade to Pro', variant: 'primary', disabled: false };
-        }
-      }
-      return { label: 'Select Plan', variant: 'secondary', disabled: false };
+    if (plan.code === 'lawyer_verified' && isLawyerVerified) {
+      toast('Your Bar Council Verified Badge is already active.', 'info');
+      return;
     }
 
-    if (activeTab === 'lawyer') {
-      if (plan.code === 'lawyer_verified') {
-        if (isLawyerVerified) {
-          return { label: 'Verified Badge Active', variant: 'secondary', disabled: true, isCurrent: true };
-        }
-        return { label: 'Get Verified Badge (Tk. 999)', variant: 'primary', disabled: false };
-      }
-      return { label: 'Current Base Plan', variant: 'secondary', disabled: true, isCurrent: true };
+    if (plan.price === 0 || plan.price_monthly === 0) {
+      toast('You already have access to the Free directory listing.', 'info');
+      return;
     }
 
-    return { label: 'Select Plan', variant: 'secondary', disabled: false };
+    setCheckoutLoading(plan.code);
+    try {
+      await api.post('/lawyer/verification-purchase', { provider: 'demo' });
+      toast('Bar Council Verified Badge activated! Your profile now has priority ranking.', 'success');
+      if (reloadLawyer) reloadLawyer();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to process verification purchase'), 'error');
+    } finally {
+      setCheckoutLoading(null);
+    }
   };
 
   return (
@@ -275,50 +324,226 @@ export default function PricingPage() {
           <LoadingState message="Loading subscription plans..." />
         ) : error ? (
           <ErrorState error={error} onRetry={reload} />
-        ) : displayedPlans.length === 0 ? (
-          <EmptyState
-            icon={CreditCard}
-            title={`No ${activeTab === 'user' ? 'Client' : 'Lawyer'} plans available`}
-            description="Pricing plans for this category are currently being updated."
-            actionLabel="Refresh Plans"
-            onAction={reload}
-          />
-        ) : (
+        ) : activeTab === 'user' ? (
+          /* Client Plans: Free Card & Pro Card with Billing Cycle Toggle */
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {displayedPlans.map((plan, idx) => {
-              const btnState = getButtonState(plan);
-              const isPopular = plan.popular || plan.code === 'user_pro' || plan.code === 'lawyer_verified';
+            {/* 1. Free Card */}
+            <Card className="relative flex flex-col transition-all duration-300 bg-zinc-900/60 border-zinc-800 hover:border-zinc-700">
+              <CardHeader className="text-center pt-8 pb-4">
+                <h3 className="text-2xl font-bold text-zinc-50 mb-2">
+                  Free Plan
+                </h3>
+
+                <div className="flex items-baseline justify-center gap-1 my-3">
+                  <span className="text-2xl font-semibold text-zinc-400">Tk.</span>
+                  <span className="text-5xl font-extrabold text-zinc-50 tracking-tight">0</span>
+                  <span className="text-zinc-400 text-sm font-medium">/ month</span>
+                </div>
+
+                <p className="text-sm text-zinc-400 max-w-xs mx-auto leading-relaxed">
+                  Essential legal AI guidance and lawyer search for everyday citizens.
+                </p>
+              </CardHeader>
+
+              <CardContent className="flex-1 px-6 sm:px-8 pt-4 pb-6">
+                <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-4">
+                  Included Features
+                </div>
+
+                <ul className="space-y-3.5">
+                  {freeBullets.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <div className="rounded-full p-0.5 shrink-0 mt-0.5 bg-zinc-800 text-zinc-400">
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm text-zinc-300 leading-snug">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+
+              <CardFooter className="px-6 sm:px-8 pb-8 pt-2">
+                <Button
+                  id="pricing-select-user_free"
+                  className={`w-full py-2.5 text-sm font-semibold transition-all shadow-md ${
+                    (!isUserPro && user && (user.role === 'user' || user.role === 'admin')) || isUserPro || (user && user.role !== 'user' && user.role !== 'admin')
+                      ? 'opacity-60 cursor-not-allowed bg-zinc-800 text-zinc-400 border border-zinc-700/60 shadow-none hover:bg-zinc-800'
+                      : ''
+                  }`}
+                  variant="secondary"
+                  disabled={(!isUserPro && user && (user.role === 'user' || user.role === 'admin')) || isUserPro || (user && user.role !== 'user' && user.role !== 'admin')}
+                  onClick={handleSelectFree}
+                >
+                  {!user ? (
+                    'Get Started Free'
+                  ) : isUserPro ? (
+                    'Downgrade unavailable'
+                  ) : user.role !== 'user' && user.role !== 'admin' ? (
+                    'Client Account Required'
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 mr-1.5 inline" />
+                      Current Plan
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* 2. Pro Card with Segmented Toggle & Dynamic Pricing */}
+            <Card className="relative flex flex-col transition-all duration-300 border-blue-500 shadow-2xl shadow-blue-950/40 bg-zinc-900/90 ring-1 ring-blue-500/30">
+              {/* Badge top center */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                <span className="inline-flex items-center gap-1 text-white border-none px-4 py-1 text-xs font-bold rounded-full shadow-lg bg-gradient-to-r from-blue-600 to-violet-600 shadow-blue-900/50">
+                  <Zap className="h-3.5 w-3.5 text-amber-300" />
+                  Most Popular for Clients
+                </span>
+              </div>
+
+              <CardHeader className="text-center pt-8 pb-4">
+                <h3 className="text-2xl font-bold text-zinc-50 mb-1 flex items-center justify-center gap-2">
+                  Pro Plan
+                </h3>
+
+                {/* Segmented billingCycle toggle */}
+                <div className="flex justify-center my-3">
+                  <div className="inline-flex p-1 bg-zinc-950/90 border border-zinc-800 rounded-xl shadow-inner">
+                    <button
+                      id="billing-cycle-monthly"
+                      type="button"
+                      onClick={() => setBillingCycle('monthly')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+                        billingCycle === 'monthly'
+                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                      }`}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      id="billing-cycle-6m"
+                      type="button"
+                      onClick={() => setBillingCycle('6m')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 flex items-center gap-1.5 ${
+                        billingCycle === '6m'
+                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                      }`}
+                    >
+                      <span>6 Months</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-bold border border-emerald-500/30">
+                        Save 16%
+                      </span>
+                    </button>
+                    <button
+                      id="billing-cycle-1y"
+                      type="button"
+                      onClick={() => setBillingCycle('1y')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 flex items-center gap-1.5 ${
+                        billingCycle === '1y'
+                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                      }`}
+                    >
+                      <span>1 Year</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-bold border border-emerald-500/30">
+                        Save 30%
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dynamic Price Display based on billingCycle */}
+                <div className="flex flex-col items-center justify-center my-2">
+                  <div className="flex items-baseline justify-center gap-1">
+                    <span className="text-2xl font-semibold text-zinc-400">Tk.</span>
+                    <span className="text-5xl font-extrabold text-zinc-50 tracking-tight">
+                      {currentPro.price}
+                    </span>
+                    {billingCycle === 'monthly' && (
+                      <span className="text-zinc-400 text-sm font-medium">/ month</span>
+                    )}
+                  </div>
+                  {currentPro.subtext && (
+                    <div className="mt-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                        <Sparkles className="h-3 w-3" />
+                        {currentPro.subtext}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-sm text-zinc-400 max-w-xs mx-auto leading-relaxed mt-1">
+                  Deep legal intelligence with 20-turn memory, document & image analysis and priority access.
+                </p>
+              </CardHeader>
+
+              <CardContent className="flex-1 px-6 sm:px-8 pt-4 pb-6">
+                <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-4">
+                  Everything in Free, plus:
+                </div>
+
+                <ul className="space-y-3.5">
+                  {proBullets.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <div className="rounded-full p-0.5 shrink-0 mt-0.5 bg-emerald-500/20 text-emerald-400">
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm text-zinc-300 leading-snug">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+
+              <CardFooter className="px-6 sm:px-8 pb-8 pt-2">
+                <Button
+                  id="pricing-select-user_pro"
+                  className={`w-full py-2.5 text-sm font-semibold transition-all shadow-md ${
+                    isUserPro || (user && user.role !== 'user' && user.role !== 'admin')
+                      ? 'opacity-60 cursor-not-allowed bg-zinc-800 text-zinc-400 border border-zinc-700/60 shadow-none hover:bg-zinc-800'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30'
+                  }`}
+                  variant={isUserPro ? 'secondary' : 'primary'}
+                  disabled={isUserPro || (user && user.role !== 'user' && user.role !== 'admin') || checkoutLoading === currentPro.code}
+                  isLoading={checkoutLoading === currentPro.code}
+                  onClick={handleSelectPro}
+                >
+                  {isUserPro ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 mr-1.5 inline" />
+                      Current Plan
+                    </>
+                  ) : user && user.role !== 'user' && user.role !== 'admin' ? (
+                    'Client Account Required'
+                  ) : (
+                    'Upgrade to Pro'
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        ) : (
+          /* Lawyer Plans: Basic & Verified Badge */
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {displayedLawyerPlans.map((plan, idx) => {
+              const isPopular = plan.popular || plan.code === 'lawyer_verified';
+              const isCurrent = plan.code === 'lawyer_verified' ? isLawyerVerified : !isLawyerVerified;
 
               return (
                 <Card
                   key={plan.id || idx}
                   className={`relative flex flex-col transition-all duration-300 ${
                     isPopular
-                      ? activeTab === 'lawyer'
-                        ? 'border-violet-500 shadow-2xl shadow-violet-950/40 bg-zinc-900/90 ring-1 ring-violet-500/30'
-                        : 'border-blue-500 shadow-2xl shadow-blue-950/40 bg-zinc-900/90 ring-1 ring-blue-500/30'
+                      ? 'border-violet-500 shadow-2xl shadow-violet-950/40 bg-zinc-900/90 ring-1 ring-violet-500/30'
                       : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
                   }`}
                 >
-                  {/* Badge top center */}
                   {isPopular && (
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                      <span className={`inline-flex items-center gap-1 text-white border-none px-4 py-1 text-xs font-bold rounded-full shadow-lg ${
-                        activeTab === 'lawyer'
-                          ? 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-violet-900/50'
-                          : 'bg-gradient-to-r from-blue-600 to-violet-600 shadow-blue-900/50'
-                      }`}>
-                        {activeTab === 'lawyer' ? (
-                          <>
-                            <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" />
-                            Recommended for Advocates
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="h-3.5 w-3.5 text-amber-300" />
-                            Most Popular for Clients
-                          </>
-                        )}
+                      <span className="inline-flex items-center gap-1 text-white border-none px-4 py-1 text-xs font-bold rounded-full shadow-lg bg-gradient-to-r from-violet-600 to-indigo-600 shadow-violet-900/50">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" />
+                        Recommended for Advocates
                       </span>
                     </div>
                   )}
@@ -336,15 +561,15 @@ export default function PricingPage() {
                       <span className="text-5xl font-extrabold text-zinc-50 tracking-tight">
                         {plan.price ?? plan.price_monthly ?? 0}
                       </span>
-                      <span className="text-zinc-400 text-sm font-medium">/month</span>
+                      {plan.price_monthly > 0 ? (
+                        <span className="text-zinc-400 text-sm font-medium">/ month</span>
+                      ) : (
+                        <span className="text-zinc-400 text-sm font-medium">/ forever</span>
+                      )}
                     </div>
 
                     <p className="text-sm text-zinc-400 max-w-xs mx-auto leading-relaxed">
-                      {plan.code === 'user_free'
-                        ? 'Essential Gemini AI legal assistance and lawyer discovery for citizens.'
-                        : plan.code === 'user_pro'
-                        ? 'Deep legal intelligence with extended memory, document analysis and priority support.'
-                        : plan.code === 'lawyer_basic'
+                      {plan.code === 'lawyer_basic'
                         ? 'Standard directory presence and direct consultation inquiries from citizens.'
                         : 'Official Bar Council verification, top ranking, and integrated client consultation suite.'}
                     </p>
@@ -352,23 +577,11 @@ export default function PricingPage() {
 
                   <CardContent className="flex-1 px-6 sm:px-8 pt-4 pb-6">
                     <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-4">
-                      {plan.price === 0 ? 'Included Features' : 'Everything in Free, plus:'}
+                      {plan.price_monthly === 0 ? 'Included Features' : 'Everything in Basic, plus:'}
                     </div>
 
                     <ul className="space-y-3.5">
-                      {(plan.code === 'user_free' ? [
-                        "10 AI messages per day",
-                        "3 saved chat sessions",
-                        "5-turn AI memory",
-                        "Browse verified lawyer directory and book consultations"
-                      ] : plan.code === 'user_pro' ? [
-                        "Unlimited AI chat queries and saved sessions",
-                        "Extended AI memory (20-turn context vs 5)",
-                        "Legal document and image upload with AI analysis (PDF/TXT/PNG/JPG)",
-                        "AI confidence score on every answer",
-                        "Direct messaging with verified lawyers",
-                        "Priority handling of consultation requests"
-                      ] : (plan.features || [])).map((feature, i) => (
+                      {(plan.features || []).map((feature, i) => (
                         <li key={i} className="flex items-start gap-3">
                           <div className={`rounded-full p-0.5 shrink-0 mt-0.5 ${
                             isPopular ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'
@@ -385,21 +598,39 @@ export default function PricingPage() {
                     <Button
                       id={`pricing-select-${plan.code}`}
                       className={`w-full py-2.5 text-sm font-semibold transition-all shadow-md ${
-                        btnState.disabled
+                        user && (user.role !== 'lawyer' && user.role !== 'admin')
                           ? 'opacity-60 cursor-not-allowed bg-zinc-800 text-zinc-400 border border-zinc-700/60 shadow-none hover:bg-zinc-800'
                           : isPopular
-                          ? activeTab === 'lawyer'
-                            ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-900/30'
-                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30'
+                          ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-900/30'
                           : ''
                       }`}
-                      variant={btnState.variant}
-                      disabled={btnState.disabled || checkoutLoading === plan.code}
+                      variant={isPopular && !isLawyerVerified ? 'primary' : 'secondary'}
+                      disabled={
+                        (user && (user.role !== 'lawyer' && user.role !== 'admin')) ||
+                        (plan.code === 'lawyer_verified' && isLawyerVerified) ||
+                        (plan.code === 'lawyer_basic' && user && user.role === 'lawyer') ||
+                        checkoutLoading === plan.code
+                      }
                       isLoading={checkoutLoading === plan.code}
-                      onClick={() => handleSelectPlan(plan)}
+                      onClick={() => handleSelectLawyerPlan(plan)}
                     >
-                      {btnState.isCurrent && <CheckCircle2 className="h-4 w-4 mr-1.5 inline" />}
-                      {btnState.label}
+                      {!user ? (
+                        plan.code === 'lawyer_verified' ? 'Get Verified Badge' : 'Join Directory Free'
+                      ) : user.role !== 'lawyer' && user.role !== 'admin' ? (
+                        'Lawyer Account Required'
+                      ) : plan.code === 'lawyer_verified' && isLawyerVerified ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-1.5 inline" />
+                          Verified Badge Active
+                        </>
+                      ) : plan.code === 'lawyer_basic' ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-1.5 inline" />
+                          Current Base Plan
+                        </>
+                      ) : (
+                        'Get Verified Badge (Tk. 999)'
+                      )}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -453,7 +684,7 @@ export default function PricingPage() {
         <div className="mt-16 max-w-3xl mx-auto text-center border-t border-zinc-900 pt-12">
           <h3 className="text-xl font-bold text-zinc-50 mb-3">Questions about pricing?</h3>
           <p className="text-sm text-zinc-400 mb-6">
-            Clients get free AI legal guidance and can upgrade to Pro for unlimited queries, document and image analysis, and direct access to verified lawyers. Lawyers can join our directory for free and upgrade to Verified status anytime.
+            Clients get free AI legal guidance and can upgrade to Pro for unlimited queries, 20-turn memory, document and image analysis, and direct access to verified lawyers. Lawyers can join our directory for free and upgrade to Verified status anytime.
           </p>
           <div className="flex justify-center gap-4">
             <Link to="/client/chat">
@@ -473,3 +704,4 @@ export default function PricingPage() {
     </div>
   );
 }
+

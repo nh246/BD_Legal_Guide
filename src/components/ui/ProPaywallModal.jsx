@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import Modal from './Modal';
-import { Zap, Check } from 'lucide-react';
+import { Zap, Check, Sparkles } from 'lucide-react';
 import Button from './Button';
 import api, { getErrorMessage } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
@@ -10,17 +11,18 @@ export default function ProPaywallModal({ isOpen, onClose, message, onSuccess })
   const [loading, setLoading] = useState(false);
 
   const features = [
-    "Unlimited AI chat queries and saved sessions",
-    "Extended AI memory (20-turn context vs 5)",
-    "Legal document and image upload with AI analysis",
-    "Direct messaging with verified lawyers",
-    "Priority handling of consultation requests"
+    "Unlimited AI messages & sessions",
+    "20-turn conversation memory",
+    "Document & Image analysis (Vision)",
+    "Direct messaging with any lawyer",
+    "Priority booking queue",
+    "AI Confidence Scores",
   ];
 
   const handleUpgrade = async () => {
     setLoading(true);
     try {
-      await api.post('/subscriptions', { plan_code: 'user_pro', provider: 'demo' });
+      await api.post('/subscriptions', { plan_code: 'user_pro_monthly', provider: 'demo' });
       try {
         await useAuthStore.getState().fetchMe();
       } catch {
@@ -79,6 +81,14 @@ export default function ProPaywallModal({ isOpen, onClose, message, onSuccess })
           >
             Upgrade for Tk. 299/mo
           </Button>
+          <Link
+            to="/pricing?role=user"
+            onClick={onClose}
+            className="text-xs text-violet-400 hover:text-violet-300 transition-colors text-center py-1 font-medium flex items-center justify-center gap-1"
+          >
+            <Sparkles className="h-3 w-3" />
+            <span>View 6-month & 1-year plans with savings →</span>
+          </Link>
           <Button variant="ghost" className="w-full" onClick={onClose} disabled={loading}>
             Maybe Later
           </Button>

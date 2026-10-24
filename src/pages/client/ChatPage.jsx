@@ -17,6 +17,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Menu,
+  Sparkles,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import Modal from '../../components/ui/Modal';
@@ -49,7 +50,15 @@ export default function ChatPage() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [chatError, setChatError] = useState(null);
   const [llmConfig, setLlmConfig] = useState(null);
+  const { data: usageData, reload: reloadUsage } = useApi(token ? '/chat/usage' : null);
   const [usage, setUsage] = useState(null);
+
+  useEffect(() => {
+    if (usageData) {
+      setUsage(usageData);
+    }
+  }, [usageData]);
+
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -72,16 +81,18 @@ export default function ChatPage() {
   };
 
   const isPro = Boolean(
-    (subData?.status === 'active' && subData?.plan_code === 'user_pro') ||
+    (subData?.status === 'active' && (subData?.plan_code?.startsWith('user_pro') || subData?.plan_code === 'user_pro')) ||
+    user?.plan?.startsWith('user_pro') ||
     user?.plan === 'user_pro' ||
     user?.plan === 'pro' ||
-    user?.is_pro === true
+    user?.is_pro === true ||
+    (usage && usage.plan !== 'user_free' && usage.plan?.includes('pro'))
   );
 
   const isFree = usage ? usage.plan === 'user_free' : !isPro;
-  const messagesLeft = usage?.daily_limit != null
-    ? Math.max(0, usage.daily_limit - (usage.messages_today || 0))
-    : null;
+  const monthlyLimit = usage?.monthly_limit != null ? usage.monthly_limit : 15;
+  const messagesThisMonth = usage?.messages_this_month != null ? usage.messages_this_month : 0;
+  const messagesLeft = Math.max(0, monthlyLimit - messagesThisMonth);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -97,13 +108,13 @@ export default function ChatPage() {
       const res = await api.get('/chat/usage');
       setUsage(res.data);
     } catch {
-      // ignore
+      if (reloadUsage) reloadUsage();
     }
   };
 
   useEffect(() => {
     fetchUsage();
-  }, []);
+  }, [token]);
 
   // Fetch active LLM config on mount
   useEffect(() => {
@@ -351,7 +362,7 @@ export default function ChatPage() {
     } catch (err) {
       if (err.response?.status === 402) {
         setShowPaywall(true);
-        const msg = err.response?.data?.message || 'Daily free limit reached (10 messages). Upgrade to Pro for unlimited queries.';
+        const msg = err.response?.data?.message || 'Monthly free limit reached (15 messages). Upgrade to Pro.';
         setPaywallMessage(msg);
         toast(msg, 'error');
         setChatError(msg);
@@ -460,19 +471,22 @@ export default function ChatPage() {
 
           <div className="flex items-center gap-2.5">
             {isFree ? (
-              <>
-                <span className="px-3 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
-                  Free Plan
-                </span>
-                {messagesLeft !== null && (
-                  <span className="text-xs text-zinc-400">
-                    {messagesLeft} messages left today
-                  </span>
-                )}
-              </>
+              <span
+                id="chat-usage-chip"
+                className="px-3 py-1 rounded-full text-xs font-medium bg-zinc-900 text-zinc-300 border border-zinc-700/80 shadow-sm flex items-center gap-1.5"
+                title={`${messagesLeft}/15 messages this month`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                <span>{messagesLeft} / {monthlyLimit} messages this month</span>
+                <span className="sr-only">({messagesLeft}/{monthlyLimit} messages this month)</span>
+              </span>
             ) : (
-              <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-600/20 text-purple-300 border border-purple-500/40">
-                Pro Plan
+              <span
+                id="chat-usage-chip"
+                className="px-3 py-1 rounded-full text-xs font-medium bg-purple-600/20 text-purple-300 border border-purple-500/40 shadow-sm flex items-center gap-1.5"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-purple-300" />
+                <span>Pro Plan • Unlimited</span>
               </span>
             )}
           </div>
