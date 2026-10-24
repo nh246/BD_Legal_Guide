@@ -81,6 +81,19 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
+  setUser: (user) => {
+    persist(null, user);
+    set({ user });
+  },
+
+  updateUser: (updatedFields) => {
+    const current = get().user || {};
+    const newUser = { ...current, ...updatedFields };
+    persist(null, newUser);
+    set({ user: newUser });
+    return newUser;
+  },
+
   clearError: () => set({ error: null }),
 }));
 

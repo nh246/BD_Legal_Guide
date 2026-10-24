@@ -38,7 +38,7 @@ export default function LawyerDashboard() {
   const { data: inboxData, loading: inboxLoading, error: inboxError, reload: reloadInbox } = useApi('/messages/lawyer/inbox');
   const { data: assetsData, loading: assetsLoading, reload: reloadAssets } = useApi('/profile/assets');
 
-  const [activeTab, setActiveTab] = useState('consultations'); // 'consultations' | 'inbox' | 'profile'
+  const [activeTab, setActiveTab] = useState('consultations'); // 'consultations' | 'availability' | 'inbox' | 'profile'
   const [actionLoading, setActionLoading] = useState(null);
   const [showAddSlot, setShowAddSlot] = useState(false);
   const [newDate, setNewDate] = useState('');
@@ -70,9 +70,38 @@ export default function LawyerDashboard() {
   const avatarAsset = assets.find((a) => a.kind === 'avatar');
   const verificationDocs = assets.filter((a) => a.kind === 'verification');
 
+  const formatDateEnGB = (dateVal) => {
+    if (!dateVal) return '';
+    if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
+      const [y, m, d] = dateVal.slice(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    }
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const todayIso = new Date().toISOString().split('T')[0];
+
   const pendingRequests = requests.filter((r) => r.status === 'pending');
   const confirmedRequests = requests.filter((r) => r.status === 'confirmed');
-  const availableSlots = schedules.filter((s) => !s.is_booked);
+
+  // Past slots hidden, sorted ascending
+  const futureSlots = schedules
+    .filter((s) => !s.date || s.date >= todayIso)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.start_time || '').localeCompare(b.start_time || ''));
+
+  const availableSlots = futureSlots.filter((s) => !s.is_booked);
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0);
 
   useEffect(() => {
@@ -164,6 +193,10 @@ export default function LawyerDashboard() {
     e.preventDefault();
     if (!newDate || !newStartTime || !newEndTime) {
       toast('Please fill in all date and time fields', 'error');
+      return;
+    }
+    if (newDate < todayIso) {
+      toast('Slots must be in the future or today.', 'error');
       return;
     }
 
@@ -362,16 +395,21 @@ export default function LawyerDashboard() {
           </div>
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => setShowAddSlot(true)}
+              onClick={() => {
+                setActiveTab('availability');
+                setShowAddSlot(true);
+              }}
               className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm"
             >
               <Plus className="h-4 w-4" /> Add Slot
             </Button>
-            <Link to="/lawyer/availability">
-              <Button variant="secondary" className="gap-2">
-                <Calendar className="h-4 w-4" /> Calendar
-              </Button>
-            </Link>
+            <Button
+              variant={activeTab === 'availability' ? 'primary' : 'secondary'}
+              onClick={() => setActiveTab('availability')}
+              className="gap-2"
+            >
+              <Calendar className="h-4 w-4" /> Availability
+            </Button>
           </div>
         </div>
 
@@ -401,7 +439,10 @@ export default function LawyerDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            onClick={() => setActiveTab('availability')}
+            className="cursor-pointer hover:border-zinc-700 transition-colors"
+          >
             <CardContent className="p-6 flex items-center gap-4">
               <div className="h-12 w-12 rounded-xl flex items-center justify-center bg-blue-500/10 text-blue-500">
                 <Calendar className="h-6 w-6" />
@@ -446,11 +487,29 @@ export default function LawyerDashboard() {
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <CalendarCheck className="h-4 w-4" />
-            <span>Consultations & Schedules</span>
+            <Inbox className="h-4 w-4" />
+            <span>Consultations</span>
             {pendingRequests.length > 0 && (
               <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">
                 {pendingRequests.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            id="tab-availability"
+            onClick={() => setActiveTab('availability')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+              activeTab === 'availability'
+                ? 'border-blue-500 text-zinc-50'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <CalendarCheck className="h-4 w-4" />
+            <span>Availability</span>
+            {availableSlots.length > 0 && (
+              <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full font-bold">
+                {availableSlots.length}
               </span>
             )}
           </button>
@@ -503,10 +562,11 @@ export default function LawyerDashboard() {
 
               <form onSubmit={handleCreateSlot} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-zinc-300">Date (e.g. 2026-11-01)</label>
+                  <label className="text-xs font-medium text-zinc-300">Date (min = today)</label>
                   <input
                     type="date"
                     required
+                    min={todayIso}
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none"
@@ -560,7 +620,7 @@ export default function LawyerDashboard() {
           </div>
         )}
 
-        {/* Tab Content 1: Consultations & Schedules */}
+        {/* Tab Content 1: Consultations */}
         {activeTab === 'consultations' && (
           <div className="space-y-8 animate-in fade-in duration-200">
             {/* Section 1: Booking Requests List */}
@@ -603,7 +663,7 @@ export default function LawyerDashboard() {
                       <tbody className="divide-y divide-zinc-800">
                         {requests.map((req) => {
                           const clientName = req.user_name || req.client_name || req.clientName || 'Client';
-                          const dateDisplay = req.date || (req.created_at ? new Date(req.created_at).toLocaleDateString() : 'Pending');
+                          const dateDisplay = formatDateEnGB(req.schedule_date || req.date || req.created_at) || 'Pending';
                           const timeDisplay = req.start_time
                             ? `${req.start_time}${req.end_time ? ' - ' + req.end_time : ''}`
                             : req.time || '10:00 AM';
@@ -681,27 +741,42 @@ export default function LawyerDashboard() {
                 </Card>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Section 2: Lawyer's Own Schedule Slots */}
+        {/* Tab Content 2: Availability */}
+        {activeTab === 'availability' && (
+          <div className="space-y-8 animate-in fade-in duration-200">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
-                  <CalendarCheck className="h-5 w-5 text-emerald-500" /> Your Availability Schedules
-                </h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={reloadSchedules}
-                  className="text-xs text-zinc-400 hover:text-zinc-200"
-                >
-                  Refresh Schedules
-                </Button>
+                <div>
+                  <h2 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
+                    <CalendarCheck className="h-5 w-5 text-emerald-500" /> Your Availability Schedules
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1">Configure your open dates and time windows for client consultations. Past slots are automatically hidden.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setShowAddSlot(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm text-xs h-8"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Slot
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={reloadSchedules}
+                    className="text-xs text-zinc-400 hover:text-zinc-200"
+                  >
+                    Refresh
+                  </Button>
+                </div>
               </div>
 
-              {schedules.length === 0 ? (
+              {futureSlots.length === 0 ? (
                 <EmptyState
                   icon={Calendar}
-                  title="No schedules configured"
+                  title="No upcoming schedules configured"
                   description="Create available time slots so clients can book consultations with you."
                   actionLabel="Add Availability Slot"
                   onAction={() => setShowAddSlot(true)}
@@ -719,9 +794,9 @@ export default function LawyerDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-800">
-                        {schedules.map((slot) => (
+                        {futureSlots.map((slot) => (
                           <tr key={slot.id} className="hover:bg-zinc-800/30 transition-colors">
-                            <td className="px-6 py-4 text-zinc-100 font-mono text-xs">{slot.date}</td>
+                            <td className="px-6 py-4 text-zinc-100 font-mono text-xs">{formatDateEnGB(slot.date)}</td>
                             <td className="px-6 py-4 text-zinc-300 font-mono text-xs">
                               {slot.start_time} - {slot.end_time}
                             </td>

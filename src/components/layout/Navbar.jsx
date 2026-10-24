@@ -221,6 +221,26 @@ export default function Navbar() {
       {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-zinc-800/80 bg-zinc-950/95 px-4 pt-3 pb-5 space-y-2 backdrop-blur-xl animate-in slide-in-from-top-2 duration-150">
+          {user && (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 mb-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
+              {avatarAsset ? (
+                <img
+                  src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
+                  alt={displayName}
+                  className="h-8 w-8 rounded-full object-cover border border-zinc-700 shrink-0"
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-semibold text-xs shrink-0">
+                  {avatarLetter}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-zinc-200 font-medium truncate">{displayName}</p>
+                <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+              </div>
+            </div>
+          )}
+
           {(!user || user.role === 'user' || user.role === 'admin') && (
             <>
               <Link

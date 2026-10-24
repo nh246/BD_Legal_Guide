@@ -14,6 +14,7 @@ import {
   FileText,
   MessageSquare,
   Lock,
+  Phone,
   Send,
   RefreshCw,
 } from 'lucide-react';
@@ -422,6 +423,52 @@ export default function LawyerProfilePage() {
                       </li>
                     </ul>
                   </div>
+                </div>
+
+                {/* Contact Information */}
+                <div>
+                  <h3 className="text-lg font-semibold text-zinc-50 mb-3">Contact Details</h3>
+                  {lawyer.phone ? (
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5">
+                        <div className="h-10 w-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                          <Phone className="h-5 w-5 text-blue-400" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Direct Phone</div>
+                          <a
+                            href={`tel:${lawyer.phone}`}
+                            className="text-zinc-100 font-mono font-medium hover:text-blue-400 transition-colors text-base"
+                          >
+                            {lawyer.phone}
+                          </a>
+                        </div>
+                      </div>
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        Verified Contact
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="h-10 w-10 rounded-lg bg-zinc-800/80 border border-zinc-700/50 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                          <Lock className="h-5 w-5 text-amber-400" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Contact Protected</div>
+                          <p className="text-sm text-zinc-300 font-medium">
+                            Contact details revealed after booking confirmation
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        to={`/client/book/${lawyer.id}`}
+                        className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-medium px-5 py-2.5 rounded-lg transition-colors shadow-lg shadow-blue-500/20 text-sm shrink-0"
+                      >
+                        Book Consultation
+                      </Link>
+                    </div>
+                  )}
                 </div>
 
                 {verificationDocs.length > 0 && (

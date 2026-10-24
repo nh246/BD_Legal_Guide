@@ -15,14 +15,29 @@ export function useApi(path) {
     if (!path) return;
     setLoading(true);
     setError(null);
-    try {
-      const res = await api.get(path);
-      setData(res.data);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
+
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        const res = await api.get(path);
+        setData(res.data);
+        setError(null);
+        setLoading(false);
+        return;
+      } catch (err) {
+        attempts++;
+        // If it's a network disconnect / server reboot (no HTTP response), retry with backoff
+        if (!err.response && attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, attempts * 700));
+          continue;
+        }
+        setError(err);
+        break;
+      }
     }
+    setLoading(false);
   }, [path]);
 
   useEffect(() => {
