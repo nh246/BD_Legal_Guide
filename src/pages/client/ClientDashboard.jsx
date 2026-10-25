@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Users, Calendar, ShieldCheck, Clock, ArrowRight, Camera, User, Pencil } from 'lucide-react';
+import { MessageSquare, Users, Calendar, ShieldCheck, Clock, ArrowRight, Camera, User, Pencil, CreditCard, CheckCircle2, Star, Briefcase, Plus, Gavel } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
@@ -8,6 +8,11 @@ import EmptyState from '../../components/ui/EmptyState';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import { LoadingState, ErrorState } from '../../components/ui/PageStates';
+import CompletePaymentModal from '../../components/ui/CompletePaymentModal';
+import ReviewModal from '../../components/ui/ReviewModal';
+import PostCaseModal from '../../components/ui/PostCaseModal';
+import CaseBidsList from '../../components/ui/CaseBidsList';
+import ProPaywallModal from '../../components/ui/ProPaywallModal';
 import useApi from '../../lib/useApi';
 import useAuthStore from '../../store/useAuthStore';
 import api, { asList, getErrorMessage } from '../../lib/api';
@@ -16,6 +21,7 @@ import { toast } from '../../store/useToastStore';
 export default function ClientDashboard() {
   const { user, token, updateUser } = useAuthStore();
   const { data: bookingsData, loading, error, reload } = useApi('/bookings/mine');
+  const { data: casesData, loading: casesLoading, error: casesError, reload: reloadCases } = useApi(token ? '/cases/mine' : null);
   const { data: subData } = useApi(token ? '/subscriptions/mine' : null);
   const { data: assetsData, reload: reloadAssets } = useApi(token ? '/profile/assets' : null);
 
@@ -29,8 +35,22 @@ export default function ClientDashboard() {
 
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [cancellingBooking, setCancellingBooking] = useState(false);
+  const [paymentModalBooking, setPaymentModalBooking] = useState(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewModalBooking, setReviewModalBooking] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
+
+  // Case Board state
+  const [activeDashboardTab, setActiveDashboardTab] = useState('consultations');
+  const [isPostCaseModalOpen, setIsPostCaseModalOpen] = useState(false);
+  const [isCasePaywallOpen, setIsCasePaywallOpen] = useState(false);
+  const [selectedCaseIdForBids, setSelectedCaseIdForBids] = useState(null);
+  const [isCaseBidsModalOpen, setIsCaseBidsModalOpen] = useState(false);
+  const [caseFilter, setCaseFilter] = useState('all');
 
   const bookings = asList(bookingsData, 'bookings');
+  const cases = asList(casesData, 'cases');
   const assets = asList(assetsData, 'assets');
   const avatarAsset = assets.find((a) => a.kind === 'avatar');
 
@@ -131,9 +151,16 @@ export default function ClientDashboard() {
     );
   };
 
-  // Section "Upcoming": pending + confirmed, sorted ascending (soonest first)
+  // Section "Upcoming": awaiting_payment + payment_submitted + pending + confirmed + completion_requested, sorted ascending (soonest first)
   const upcomingBookings = bookings
-    .filter((b) => b.status === 'confirmed' || b.status === 'pending')
+    .filter(
+      (b) =>
+        b.status === 'confirmed' ||
+        b.status === 'completion_requested' ||
+        b.status === 'pending' ||
+        b.status === 'awaiting_payment' ||
+        b.status === 'payment_submitted'
+    )
     .sort((a, b) => {
       const dateA = getBookingDateStr(a);
       const dateB = getBookingDateStr(b);
@@ -154,6 +181,38 @@ export default function ClientDashboard() {
       return dateB.localeCompare(dateA);
     });
 
+  const handleRequestCompletion = async (bookingId) => {
+    if (!bookingId) return;
+    setActionLoading(bookingId);
+    try {
+      await api.post(`/bookings/${bookingId}/request-completion`);
+      toast('Completion requested. Awaiting confirmation.', 'info');
+      reload();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to request completion'), 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConfirmCompletion = async (bookingId) => {
+    if (!bookingId) return;
+    setActionLoading(bookingId);
+    try {
+      const res = await api.post(`/bookings/${bookingId}/confirm-completion`);
+      toast('Consultation completed! Please leave a review.', 'success');
+      reload();
+      if (res.data) {
+        setReviewModalBooking(res.data);
+        setIsReviewModalOpen(true);
+      }
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to confirm completion'), 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleCancelBooking = async (bookingId) => {
     if (!bookingId) return;
     setCancellingBooking(true);
@@ -169,8 +228,24 @@ export default function ClientDashboard() {
     }
   };
 
-  const isPro = (subData?.status === 'active' && subData?.plan_code === 'user_pro') ||
-                user?.plan === 'user_pro' || user?.is_pro === true;
+  const isPro = Boolean(
+    user?.is_pro ||
+    user?.plan?.startsWith('user_pro') ||
+    (subData?.status === 'active' && subData?.plan_code?.startsWith('user_pro'))
+  );
+
+  const handlePostCaseClick = () => {
+    if (isPro) {
+      setIsPostCaseModalOpen(true);
+    } else {
+      setIsCasePaywallOpen(true);
+    }
+  };
+
+  const handleOpenCaseBids = (caseId) => {
+    setSelectedCaseIdForBids(caseId);
+    setIsCaseBidsModalOpen(true);
+  };
 
   const displayName = user?.full_name || user?.name || 'Client';
   const avatarLetter = (displayName || 'C')[0].toUpperCase();
@@ -254,7 +329,14 @@ export default function ClientDashboard() {
             <h1 className="text-3xl font-bold text-zinc-50">Welcome back, {displayName}</h1>
             <p className="text-zinc-400 mt-1">Manage your legal consultations and AI guidance sessions.</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              id="btn-banner-post-case"
+              onClick={handlePostCaseClick}
+              className="gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20"
+            >
+              <Briefcase className="h-4 w-4" /> Post a Case
+            </Button>
             <Link to="/client/chat">
               <Button className="gap-2">
                 <MessageSquare className="h-4 w-4" /> Start AI Chat
@@ -360,15 +442,34 @@ export default function ClientDashboard() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Next Consultation</p>
                 </div>
                 {nextBooking && (
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                      nextBooking.status === 'confirmed'
-                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                    }`}
-                  >
-                    {nextBooking.status === 'confirmed' ? 'Confirmed' : 'Pending'}
-                  </span>
+                  nextBooking.status === 'awaiting_payment' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentModalBooking(nextBooking);
+                        setIsPaymentModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 transition-colors cursor-pointer animate-pulse"
+                      title="Click to complete payment"
+                    >
+                      <CreditCard className="h-3 w-3" />
+                      <span>Action Required: Pay</span>
+                    </button>
+                  ) : nextBooking.status === 'payment_submitted' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                      <Clock className="h-3 w-3" />
+                      <span>Payment Under Review</span>
+                    </span>
+                  ) : nextBooking.status === 'confirmed' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Confirmed</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/30">
+                      Pending
+                    </span>
+                  )
                 )}
               </div>
 
@@ -422,8 +523,67 @@ export default function ClientDashboard() {
           </Card>
         </div>
 
-        {/* Consultations List (Split into Upcoming and History) */}
-        <div className="space-y-8">
+        {/* Main Tab Switcher: Consultations vs My Cases */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-2">
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              id="tab-btn-consultations"
+              onClick={() => setActiveDashboardTab('consultations')}
+              className={`pb-3 pt-2 text-sm font-semibold transition-all relative cursor-pointer flex items-center gap-2 ${
+                activeDashboardTab === 'consultations'
+                  ? 'text-blue-400'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Consultations</span>
+              <span className="text-xs bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full font-mono">
+                {bookings.length}
+              </span>
+              {activeDashboardTab === 'consultations' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              id="tab-btn-cases"
+              onClick={() => setActiveDashboardTab('cases')}
+              className={`pb-3 pt-2 text-sm font-semibold transition-all relative cursor-pointer flex items-center gap-2 ${
+                activeDashboardTab === 'cases'
+                  ? 'text-blue-400'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Briefcase className="h-4 w-4" />
+              <span>My Cases (Case Board)</span>
+              {cases.length > 0 && (
+                <span className="text-xs bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono">
+                  {cases.length}
+                </span>
+              )}
+              {activeDashboardTab === 'cases' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
+              )}
+            </button>
+          </div>
+
+          {activeDashboardTab === 'cases' && (
+            <Button
+              id="btn-tab-post-case"
+              size="sm"
+              onClick={handlePostCaseClick}
+              className="gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-sm"
+            >
+              <Plus className="h-4 w-4" /> Post a New Case
+            </Button>
+          )}
+        </div>
+
+        {activeDashboardTab === 'consultations' ? (
+          /* Consultations List (Split into Upcoming and History) */
+          <div className="space-y-8">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-zinc-50">Consultations</h2>
@@ -486,9 +646,40 @@ export default function ClientDashboard() {
                             <div className="flex flex-wrap items-center gap-2">
                               <h4 className="font-semibold text-zinc-50">{b.lawyer_name || b.lawyerName || 'Advocate'}</h4>
                               {getRelativeChip(b.schedule_date || b.date || b.start)}
-                              <Badge variant={b.status === 'confirmed' ? 'success' : 'warning'}>
-                                {b.status === 'confirmed' ? 'Confirmed' : 'Pending'}
-                              </Badge>
+                              {b.status === 'awaiting_payment' ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentModalBooking(b);
+                                    setIsPaymentModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 transition-colors cursor-pointer animate-pulse"
+                                  title="Click to complete payment"
+                                >
+                                  <CreditCard className="h-3 w-3" />
+                                  <span>Action Required: Pay</span>
+                                </button>
+                              ) : b.status === 'payment_submitted' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                  <Clock className="h-3 w-3" />
+                                  <span>Payment Under Review</span>
+                                </span>
+                              ) : b.status === 'confirmed' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  <span>Confirmed</span>
+                                </span>
+                              ) : b.status === 'completion_requested' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                  <Clock className="h-3 w-3" />
+                                  <span>Completion Requested</span>
+                                </span>
+                              ) : (
+                                <Badge variant="warning">
+                                  Pending
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-xs text-zinc-400 flex flex-wrap items-center gap-2 font-mono">
                               <span>{formatDateEnGB(b.schedule_date || b.date || b.start)}</span>
@@ -498,7 +689,43 @@ export default function ClientDashboard() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2.5 sm:self-center">
+                        <div className="flex flex-wrap items-center gap-2.5 sm:self-center">
+                          {b.status === 'awaiting_payment' && (
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-500 text-white gap-1.5 font-semibold shadow-lg shadow-amber-600/20"
+                              onClick={() => {
+                                setPaymentModalBooking(b);
+                                setIsPaymentModalOpen(true);
+                              }}
+                            >
+                              <CreditCard className="h-3.5 w-3.5" /> Pay Now
+                            </Button>
+                          )}
+                          {b.status === 'completion_requested' && (
+                            b.completion_requested_by === 'client' ? (
+                              <span className="text-xs text-zinc-400 italic">Waiting for lawyer to confirm...</span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 font-semibold shadow-sm"
+                                onClick={() => handleConfirmCompletion(b.id)}
+                                isLoading={actionLoading === b.id}
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Completion
+                              </Button>
+                            )
+                          )}
+                          {b.status === 'confirmed' && b.meeting_ended_at && (
+                            <Button
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 font-semibold shadow-sm"
+                              onClick={() => handleRequestCompletion(b.id)}
+                              isLoading={actionLoading === b.id}
+                            >
+                              Request Completion
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="secondary"
@@ -553,6 +780,19 @@ export default function ClientDashboard() {
                         </div>
 
                         <div className="flex items-center gap-2.5 sm:self-center">
+                          {b.status === 'completed' && !b.has_reviewed && (
+                            <Button
+                              size="sm"
+                              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 gap-1.5 font-semibold shadow-sm cursor-pointer"
+                              onClick={() => {
+                                setReviewModalBooking(b);
+                                setIsReviewModalOpen(true);
+                              }}
+                            >
+                              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                              Leave Review
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="secondary"
@@ -570,6 +810,195 @@ export default function ClientDashboard() {
             </div>
           )}
         </div>
+        ) : (
+          /* My Cases Tab Content */
+          <div className="space-y-6">
+            {/* Header inside My Cases tab */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-50 flex items-center gap-2">
+                  <Gavel className="h-5 w-5 text-blue-400" />
+                  <span>My Case Board Posts</span>
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Verified advocates review open cases and submit competitive fee quotes with customized legal pitches.
+                </p>
+              </div>
+              <Button
+                id="btn-cases-post-new"
+                size="sm"
+                onClick={handlePostCaseClick}
+                className="gap-2 bg-blue-600 hover:bg-blue-500 text-white self-start sm:self-auto shrink-0 shadow-md shadow-blue-600/20"
+              >
+                <Plus className="h-4 w-4" /> Post a New Case
+              </Button>
+            </div>
+
+            {/* Filter Chips */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCaseFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  caseFilter === 'all'
+                    ? 'bg-zinc-800 text-zinc-50 border border-zinc-700 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                All Cases ({cases.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCaseFilter('open')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  caseFilter === 'open'
+                    ? 'bg-zinc-800 text-zinc-50 border border-zinc-700 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Open ({cases.filter((c) => c.status === 'open').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCaseFilter('assigned')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  caseFilter === 'assigned'
+                    ? 'bg-zinc-800 text-zinc-50 border border-zinc-700 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Assigned ({cases.filter((c) => c.status === 'assigned').length})
+              </button>
+            </div>
+
+            {/* Cases List */}
+            {casesLoading ? (
+              <LoadingState label="Loading your cases..." />
+            ) : casesError ? (
+              <ErrorState error={casesError} onRetry={reloadCases} />
+            ) : cases.length === 0 ? (
+              <EmptyState
+                icon={Briefcase}
+                title="No cases posted yet"
+                description="Post your legal situation to the Case Board to receive pitches and fee proposals from top advocates."
+                action={
+                  <Button onClick={handlePostCaseClick} className="gap-2 bg-blue-600 hover:bg-blue-500 text-white">
+                    <Plus className="h-4 w-4" /> Post a Case
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="space-y-4">
+                {cases
+                  .filter((c) => {
+                    if (caseFilter === 'open') return c.status === 'open';
+                    if (caseFilter === 'assigned') return c.status === 'assigned';
+                    return true;
+                  })
+                  .map((caseItem) => {
+                    const isOpen = caseItem.status === 'open';
+                    const isAssigned = caseItem.status === 'assigned';
+                    const bidCount = caseItem.bid_count ?? (caseItem.bids?.length || 0);
+                    const acceptedBid = (caseItem.bids || []).find((b) => b.status === 'accepted');
+                    const assignedLawyerName = acceptedBid?.lawyer_name;
+
+                    return (
+                      <Card
+                        key={caseItem.id}
+                        className="p-5 border-zinc-800 hover:border-zinc-700 transition-all bg-zinc-900 space-y-3"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-zinc-800 text-blue-400 border border-zinc-700">
+                                {caseItem.category} Law
+                              </span>
+
+                              {isOpen ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>Open for Bids</span>
+                                </span>
+                              ) : isAssigned ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  <span>Assigned</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                                  Closed
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="text-lg font-bold text-zinc-50">
+                              {caseItem.title}
+                            </h4>
+                          </div>
+
+                          <div className="text-xs text-zinc-400 font-mono flex items-center gap-1 shrink-0">
+                            <Calendar className="h-3.5 w-3.5 text-zinc-500" />
+                            <span>{formatDateEnGB(caseItem.created_at)}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-xs sm:text-sm text-zinc-300 line-clamp-2 leading-relaxed whitespace-pre-line">
+                          {caseItem.description}
+                        </p>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-zinc-800/60">
+                          <div>
+                            {isAssigned ? (
+                              <div className="flex items-center gap-2 text-xs font-medium text-emerald-400">
+                                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                                <span>Assigned to {assignedLawyerName || 'Advocate'}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                                <Gavel className="h-3.5 w-3.5 text-zinc-500" />
+                                <span>
+                                  {bidCount === 0
+                                    ? 'No proposals received yet'
+                                    : `${bidCount} advocate proposal(s)`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2.5">
+                            {isAssigned && (
+                              <button
+                                type="button"
+                                onClick={() => setActiveDashboardTab('consultations')}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>View Consultation</span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+
+                            <Button
+                              size="sm"
+                              id={`btn-view-bids-${caseItem.id}`}
+                              onClick={() => handleOpenCaseBids(caseItem.id)}
+                              className={`gap-1.5 ${
+                                isOpen && bidCount > 0
+                                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+                                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                              }`}
+                            >
+                              <Gavel className="h-3.5 w-3.5" />
+                              <span>View Bids ({bidCount})</span>
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* View Details Modal */}
@@ -579,8 +1008,8 @@ export default function ClientDashboard() {
         title="Consultation Details"
         description="Review full details of this consultation booking."
         footer={
-          <div className="flex items-center justify-between w-full">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+            <div className="flex flex-wrap items-center gap-2">
               {selectedBooking?.status === 'pending' && (
                 <Button
                   id="btn-cancel-booking-modal"
@@ -590,6 +1019,49 @@ export default function ClientDashboard() {
                   disabled={cancellingBooking}
                 >
                   Cancel Booking
+                </Button>
+              )}
+              {selectedBooking?.status === 'completion_requested' && (
+                selectedBooking.completion_requested_by === 'client' ? (
+                  <span className="text-xs text-zinc-400 italic">Waiting for lawyer to confirm...</span>
+                ) : (
+                  <Button
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5"
+                    onClick={() => {
+                      const id = selectedBooking.id;
+                      setSelectedBooking(null);
+                      handleConfirmCompletion(id);
+                    }}
+                    isLoading={actionLoading === selectedBooking.id}
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Confirm Completion
+                  </Button>
+                )
+              )}
+              {selectedBooking?.status === 'confirmed' && selectedBooking.meeting_ended_at && (
+                <Button
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
+                  onClick={() => {
+                    const id = selectedBooking.id;
+                    setSelectedBooking(null);
+                    handleRequestCompletion(id);
+                  }}
+                  isLoading={actionLoading === selectedBooking.id}
+                >
+                  Request Completion
+                </Button>
+              )}
+              {selectedBooking?.status === 'completed' && !selectedBooking.has_reviewed && (
+                <Button
+                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 gap-1.5 font-semibold"
+                  onClick={() => {
+                    const b = selectedBooking;
+                    setSelectedBooking(null);
+                    setReviewModalBooking(b);
+                    setIsReviewModalOpen(true);
+                  }}
+                >
+                  <Star className="h-4 w-4 fill-amber-400 text-amber-400" /> Leave Review
                 </Button>
               )}
             </div>
@@ -618,19 +1090,51 @@ export default function ClientDashboard() {
                   <p className="text-xs text-zinc-400">Bangladesh Bar Council Advocate</p>
                 </div>
               </div>
-              <Badge
-                variant={
-                  selectedBooking.status === 'confirmed'
-                    ? 'success'
-                    : selectedBooking.status === 'completed'
-                    ? 'default'
-                    : selectedBooking.status === 'cancelled'
-                    ? 'danger'
-                    : 'warning'
-                }
-              >
-                {selectedBooking.status ? selectedBooking.status.charAt(0).toUpperCase() + selectedBooking.status.slice(1) : 'Pending'}
-              </Badge>
+              {selectedBooking.status === 'awaiting_payment' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const b = selectedBooking;
+                    setSelectedBooking(null);
+                    setPaymentModalBooking(b);
+                    setIsPaymentModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 transition-colors cursor-pointer animate-pulse"
+                >
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Action Required: Pay
+                </button>
+              ) : selectedBooking.status === 'payment_submitted' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                  <Clock className="h-3.5 w-3.5" />
+                  Payment Under Review
+                </span>
+              ) : selectedBooking.status === 'confirmed' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Confirmed
+                </span>
+              ) : selectedBooking.status === 'completion_requested' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                  <Clock className="h-3.5 w-3.5" />
+                  Completion Requested
+                </span>
+              ) : selectedBooking.status === 'completed' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Consultation Completed
+                </span>
+              ) : (
+                <Badge
+                  variant={
+                    selectedBooking.status === 'cancelled'
+                      ? 'danger'
+                      : 'warning'
+                  }
+                >
+                  {selectedBooking.status ? selectedBooking.status.charAt(0).toUpperCase() + selectedBooking.status.slice(1) : 'Pending'}
+                </Badge>
+              )}
             </div>
 
             {/* Date & Time */}
@@ -729,6 +1233,71 @@ export default function ClientDashboard() {
           />
         </form>
       </Modal>
+
+      {/* Complete Payment Modal */}
+      <CompletePaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => {
+          setIsPaymentModalOpen(false);
+          setPaymentModalBooking(null);
+        }}
+        booking={paymentModalBooking}
+        onPaymentSubmitted={() => {
+          reload();
+        }}
+      />
+
+      {/* Review Modal */}
+      <ReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          setReviewModalBooking(null);
+        }}
+        booking={reviewModalBooking}
+        revieweeName={reviewModalBooking?.lawyer_name || reviewModalBooking?.lawyerName || 'Advocate'}
+        onReviewSubmitted={() => {
+          reload();
+        }}
+      />
+
+      {/* Post Case Modal */}
+      <PostCaseModal
+        isOpen={isPostCaseModalOpen}
+        onClose={() => setIsPostCaseModalOpen(false)}
+        onSuccess={() => {
+          reloadCases();
+          setActiveDashboardTab('cases');
+        }}
+      />
+
+      {/* Case Bids List Modal */}
+      <CaseBidsList
+        isOpen={isCaseBidsModalOpen}
+        onClose={() => {
+          setIsCaseBidsModalOpen(false);
+          setSelectedCaseIdForBids(null);
+        }}
+        caseId={selectedCaseIdForBids}
+        onBidAccepted={() => {
+          reloadCases();
+          reload();
+        }}
+        onBidRejected={() => {
+          reloadCases();
+        }}
+      />
+
+      {/* Pro Paywall Modal for Case Posting */}
+      <ProPaywallModal
+        isOpen={isCasePaywallOpen}
+        onClose={() => setIsCasePaywallOpen(false)}
+        message="Posting cases to the Case Board is a Pro feature. Upgrade to post legal cases and receive competitive bids from Gold Verified advocates."
+        onSuccess={() => {
+          setIsCasePaywallOpen(false);
+          setIsPostCaseModalOpen(true);
+        }}
+      />
     </div>
   );
 }

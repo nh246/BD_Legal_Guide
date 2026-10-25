@@ -21,10 +21,16 @@ import {
   Camera,
   Eye,
   FileText,
+  Video,
+  ExternalLink,
+  Star,
 } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
+import DirectMessageThread from '../../components/ui/DirectMessageThread';
+import MeetingControls from '../../components/ui/MeetingControls';
+import ReviewModal from '../../components/ui/ReviewModal';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
@@ -46,6 +52,10 @@ export default function LawyerDashboard() {
   const [newEndTime, setNewEndTime] = useState('11:00 AM');
   const [addingSlot, setAddingSlot] = useState(false);
 
+  // Review Modal state
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewModalBooking, setReviewModalBooking] = useState(null);
+
   // Profile Assets states
   const avatarInputRef = useRef(null);
   const docInputRef = useRef(null);
@@ -58,11 +68,78 @@ export default function LawyerDashboard() {
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState(null);
-  const [replyText, setReplyText] = useState('');
-  const [replySending, setReplySending] = useState(false);
-  const threadEndRef = useRef(null);
+  const [isSelectedClientReadOnly, setIsSelectedClientReadOnly] = useState(false);
 
-  const requests = asList(reqData, 'requests');
+  const [localRequests, setLocalRequests] = useState([]);
+  const [fetchingReceiptId, setFetchingReceiptId] = useState(null);
+
+  // Meeting Settings states
+  const [meetingProvider, setMeetingProvider] = useState('Google Meet');
+  const [meetingLink, setMeetingLink] = useState('');
+  const [savingMeetingSettings, setSavingMeetingSettings] = useState(false);
+  const [loadingMeetingSettings, setLoadingMeetingSettings] = useState(false);
+
+  useEffect(() => {
+    setLoadingMeetingSettings(true);
+    api
+      .get('/lawyer/me/meeting-settings')
+      .then((res) => {
+        if (res.data) {
+          setMeetingProvider(res.data.meeting_provider || 'Google Meet');
+          setMeetingLink(res.data.meeting_link || '');
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setLoadingMeetingSettings(false);
+      });
+  }, []);
+
+  const handleSaveMeetingSettings = async (e) => {
+    e?.preventDefault?.();
+    setSavingMeetingSettings(true);
+    try {
+      await api.put('/lawyer/me/meeting-settings', {
+        meeting_provider: meetingProvider,
+        meeting_link: meetingLink,
+      });
+      toast('Meeting settings saved successfully!', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save meeting settings'), 'error');
+    } finally {
+      setSavingMeetingSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (reqData) {
+      setLocalRequests(asList(reqData, 'requests'));
+    }
+  }, [reqData]);
+
+  useEffect(() => {
+    const hasActive = localRequests.some((r) => r.meeting_started_at && !r.meeting_ended_at);
+    if (!hasActive) return;
+    const interval = setInterval(() => {
+      reloadReq();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [localRequests, reloadReq]);
+
+  useEffect(() => {
+    if (!selectedCitizen) {
+      setIsSelectedClientReadOnly(false);
+      return;
+    }
+    const citizenRequests = localRequests.filter(
+      (r) => String(r.user_id) === String(selectedCitizen.user_id)
+    );
+    const hasConfirmed = citizenRequests.some((r) => r.status === 'confirmed');
+    const hasCompleted = citizenRequests.some((r) => r.status === 'completed');
+    setIsSelectedClientReadOnly(!hasConfirmed && hasCompleted);
+  }, [selectedCitizen, localRequests]);
+
+  const requests = localRequests;
   const schedules = asList(schedData, 'schedules');
   const conversations = asList(inboxData, 'inbox');
   const assets = asList(assetsData, 'assets');
@@ -93,7 +170,7 @@ export default function LawyerDashboard() {
 
   const todayIso = new Date().toISOString().split('T')[0];
 
-  const pendingRequests = requests.filter((r) => r.status === 'pending');
+  const pendingRequests = requests.filter((r) => r.status === 'pending' || r.status === 'payment_submitted');
   const confirmedRequests = requests.filter((r) => r.status === 'confirmed');
 
   // Past slots hidden, sorted ascending
@@ -133,6 +210,24 @@ export default function LawyerDashboard() {
     citizen.unread_count = 0;
     setThreadLoading(true);
     setThreadError(null);
+
+    // Check booking status for this client
+    let reqs = localRequests;
+    try {
+      const freshRes = await api.get('/lawyer/requests');
+      const freshList = asList(freshRes.data, 'requests');
+      setLocalRequests(freshList);
+      reqs = freshList;
+    } catch {
+      // fallback to current localRequests
+    }
+    const citizenRequests = reqs.filter(
+      (r) => String(r.user_id) === String(citizen.user_id)
+    );
+    const hasConfirmed = citizenRequests.some((r) => r.status === 'confirmed');
+    const hasCompleted = citizenRequests.some((r) => r.status === 'completed');
+    setIsSelectedClientReadOnly(!hasConfirmed && hasCompleted);
+
     try {
       const res = await api.get(`/messages/lawyer/thread/${citizen.user_id}`);
       const list = res.data?.thread || res.data?.messages || res.data || [];
@@ -145,17 +240,14 @@ export default function LawyerDashboard() {
     }
   };
 
-  const handleSendReply = async (e) => {
-    e.preventDefault();
-    if (!replyText.trim() || !selectedCitizen || replySending) return;
+  const handleSendReply = async ({ content, attachmentAssetIds }) => {
+    if (!selectedCitizen) return;
 
-    const contentToSend = replyText.trim();
-    setReplySending(true);
     try {
       const res = await api.post(`/messages/lawyer/reply/${selectedCitizen.user_id}`, {
-        content: contentToSend,
+        content: content || '',
+        attachment_asset_ids: attachmentAssetIds || [],
       });
-      setReplyText('');
       toast('Reply sent successfully', 'success');
       if (res.data) {
         setThreadMessages((prev) => [...prev, res.data]);
@@ -165,9 +257,15 @@ export default function LawyerDashboard() {
       }
       reloadInbox();
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to send reply'), 'error');
-    } finally {
-      setReplySending(false);
+      if (err.response?.status === 403 && err.response.data?.error === 'booking_completed') {
+        setIsSelectedClientReadOnly(true);
+        toast('This consultation is completed. Thread is read-only.', 'error');
+      } else if (err.response?.status === 403 && err.response.data?.error === 'no_active_booking') {
+        toast('No active consultation with this client.', 'error');
+      } else {
+        toast(getErrorMessage(err, 'Failed to send reply'), 'error');
+      }
+      throw err;
     }
   };
 
@@ -180,12 +278,66 @@ export default function LawyerDashboard() {
       } else {
         toast('Booking cancelled', 'info');
       }
+      setLocalRequests((prev) =>
+        prev.map((r) => (r.id === bookingId ? { ...r, status } : r))
+      );
       reloadReq();
       reloadSchedules();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to update booking status'), 'error');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleConfirmPayment = async (bookingId) => {
+    setActionLoading(bookingId);
+    try {
+      await api.post(`/bookings/${bookingId}/confirm-payment`);
+      toast('Payment confirmed! Consultation is now scheduled.', 'success');
+      setLocalRequests((prev) =>
+        prev.map((r) => (r.id === bookingId ? { ...r, status: 'confirmed' } : r))
+      );
+      reloadReq();
+      reloadSchedules();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to confirm payment'), 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRejectPayment = async (bookingId) => {
+    setActionLoading(bookingId);
+    try {
+      await api.post(`/bookings/${bookingId}/reject-payment`);
+      toast('Payment rejected. Client can resubmit.', 'info');
+      setLocalRequests((prev) =>
+        prev.map((r) => (r.id === bookingId ? { ...r, status: 'awaiting_payment' } : r))
+      );
+      reloadReq();
+      reloadSchedules();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to reject payment'), 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleViewReceipt = async (screenshotAssetId) => {
+    if (!screenshotAssetId) {
+      toast('No screenshot attached', 'info');
+      return;
+    }
+    setFetchingReceiptId(screenshotAssetId);
+    try {
+      const res = await api.get(`/assets/${screenshotAssetId}/file`, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(res.data);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to load receipt screenshot'), 'error');
+    } finally {
+      setFetchingReceiptId(null);
     }
   };
 
@@ -342,16 +494,54 @@ export default function LawyerDashboard() {
 
   const getStatusBadge = (status) => {
     switch (status) {
+      case 'completed':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span>Consultation Completed</span>
+          </span>
+        );
+      case 'completion_requested':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+            <Clock className="h-3.5 w-3.5" />
+            <span>Completion Requested</span>
+          </span>
+        );
       case 'confirmed':
-        return <Badge variant="success">Confirmed</Badge>;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span>Paid & Confirmed</span>
+          </span>
+        );
+      case 'payment_submitted':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse">
+            <Clock className="h-3.5 w-3.5" />
+            <span>Proof Submitted - Verify Now</span>
+          </span>
+        );
+      case 'awaiting_payment':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            <Clock className="h-3.5 w-3.5" />
+            <span>Awaiting Client Payment</span>
+          </span>
+        );
       case 'cancelled':
       case 'declined':
         return <Badge variant="danger">Cancelled</Badge>;
       case 'pending':
-      default:
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
             Pending
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-400 capitalize">
+            {status || 'pending'}
           </span>
         );
     }
@@ -516,7 +706,7 @@ export default function LawyerDashboard() {
 
           <button
             onClick={() => setActiveTab('inbox')}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'inbox'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -532,8 +722,20 @@ export default function LawyerDashboard() {
           </button>
 
           <button
+            onClick={() => setActiveTab('meetings')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === 'meetings'
+                ? 'border-blue-500 text-zinc-50'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Video className="h-4 w-4" />
+            <span>Meeting Settings</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('profile')}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'profile'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -656,6 +858,7 @@ export default function LawyerDashboard() {
                           <th className="px-6 py-4 font-medium">User Name</th>
                           <th className="px-6 py-4 font-medium">Date</th>
                           <th className="px-6 py-4 font-medium">Time</th>
+                          <th className="px-6 py-4 font-medium">Payment Proof</th>
                           <th className="px-6 py-4 font-medium">Status</th>
                           <th className="px-6 py-4 font-medium">Actions</th>
                         </tr>
@@ -701,9 +904,71 @@ export default function LawyerDashboard() {
                               </td>
                               <td className="px-6 py-4 text-zinc-300 font-mono text-xs">{dateDisplay}</td>
                               <td className="px-6 py-4 text-zinc-300 text-xs font-mono">{timeDisplay}</td>
+                              <td className="px-6 py-4">
+                                {req.status === 'payment_submitted' || req.trx_id ? (
+                                  <div className="space-y-1.5">
+                                    {req.trx_id ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">TrxID:</span>
+                                        <span className="font-mono text-xs text-amber-300 font-semibold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                          {req.trx_id}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-zinc-500 italic">No TrxID</span>
+                                    )}
+                                    <div>
+                                      {req.screenshot_asset_id ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleViewReceipt(req.screenshot_asset_id)}
+                                          disabled={fetchingReceiptId === req.screenshot_asset_id}
+                                          className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors disabled:opacity-50 cursor-pointer"
+                                        >
+                                          {fetchingReceiptId === req.screenshot_asset_id ? (
+                                            <RefreshCw className="h-3 w-3 animate-spin text-blue-400" />
+                                          ) : (
+                                            <Eye className="h-3.5 w-3.5" />
+                                          )}
+                                          <span>View Receipt</span>
+                                        </button>
+                                      ) : (
+                                        <span className="text-xs text-zinc-500 italic">No screenshot provided</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-zinc-600">—</span>
+                                )}
+                              </td>
                               <td className="px-6 py-4">{getStatusBadge(req.status)}</td>
                               <td className="px-6 py-4">
-                                {req.status === 'pending' ? (
+                                {req.status === 'payment_submitted' ? (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmPayment(req.id)}
+                                      disabled={actionLoading === req.id}
+                                      className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {actionLoading === req.id ? (
+                                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Check className="h-3.5 w-3.5" />
+                                      )}
+                                      <span>Confirm Payment</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRejectPayment(req.id)}
+                                      disabled={actionLoading === req.id}
+                                      className="inline-flex items-center gap-1.5 bg-transparent hover:bg-red-500/10 text-red-400 border border-red-500/40 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                      <span>Reject Payment</span>
+                                    </button>
+                                  </div>
+                                ) : req.status === 'pending' ? (
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={() => handleBookingAction(req.id, 'confirmed')}
@@ -720,14 +985,49 @@ export default function LawyerDashboard() {
                                       <X className="h-3.5 w-3.5" /> Cancel
                                     </button>
                                   </div>
-                                ) : req.status === 'confirmed' ? (
-                                  <button
-                                    onClick={() => handleBookingAction(req.id, 'cancelled')}
-                                    disabled={actionLoading === req.id}
-                                    className="text-xs text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-zinc-800 hover:border-red-500/30 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                                  >
-                                    Cancel Booking
-                                  </button>
+                                ) : req.status === 'confirmed' || req.status === 'completion_requested' || req.status === 'completed' || req.meeting_started_at ? (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <MeetingControls
+                                      booking={req}
+                                      isLawyer={true}
+                                      compact={true}
+                                      currentUserId={user?.id}
+                                      onBookingUpdate={(updated) => {
+                                        setLocalRequests((prev) =>
+                                          prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+                                        );
+                                        reloadReq();
+                                      }}
+                                      onOpenReviewModal={(b) => {
+                                        setReviewModalBooking(b);
+                                        setIsReviewModalOpen(true);
+                                      }}
+                                    />
+                                    {req.status === 'completed' && !req.has_reviewed && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setReviewModalBooking(req);
+                                          setIsReviewModalOpen(true);
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors cursor-pointer"
+                                      >
+                                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                                        <span>Review Client</span>
+                                      </button>
+                                    )}
+                                    {req.status !== 'completed' && (
+                                      <button
+                                        onClick={() => handleBookingAction(req.id, 'cancelled')}
+                                        disabled={actionLoading === req.id}
+                                        className="text-xs text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-zinc-800 hover:border-red-500/30 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                      >
+                                        Cancel Booking
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : req.status === 'awaiting_payment' ? (
+                                  <span className="text-xs text-amber-400/80 italic">Awaiting payment</span>
                                 ) : (
                                   <span className="text-xs text-zinc-500 italic">No actions</span>
                                 )}
@@ -967,19 +1267,23 @@ export default function LawyerDashboard() {
                   {selectedCitizen ? (
                     <Card className="flex flex-col h-full bg-zinc-900 border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
                       {/* Thread Top Bar */}
-                      <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/90 flex items-center justify-between">
+                      <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/90 flex items-center justify-between shrink-0">
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-sm border border-blue-500/30">
-                            {(selectedCitizen.name || 'C')[0].toUpperCase()}
+                            {(selectedCitizen.name || selectedCitizen.full_name || 'C')[0].toUpperCase()}
                           </div>
                           <div>
                             <h3 className="text-base font-semibold text-zinc-50 flex items-center gap-2">
-                              {selectedCitizen.name || 'Citizen'}
-                              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
-                                PRO
+                              {selectedCitizen.name || selectedCitizen.full_name || 'Citizen'}
+                              <span className="text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded border border-blue-500/30">
+                                CLIENT
                               </span>
                             </h3>
-                            <p className="text-xs text-zinc-400">Direct Consultation Thread</p>
+                            <p className="text-xs text-zinc-400">
+                              {isSelectedClientReadOnly
+                                ? 'Completed Consultation Record'
+                                : 'Direct Consultation Thread'}
+                            </p>
                           </div>
                         </div>
 
@@ -987,87 +1291,73 @@ export default function LawyerDashboard() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleSelectCitizen(selectedCitizen)}
-                          className="text-xs text-zinc-400 hover:text-zinc-200"
+                          className="text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
                         >
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       </div>
 
-                      {/* Messages scroll area */}
-                      <div className="flex-1 min-h-[380px] max-h-[460px] overflow-y-auto p-5 space-y-3 bg-zinc-950/70">
-                        {threadLoading ? (
-                          <div className="h-full flex items-center justify-center">
-                            <LoadingState message="Loading thread messages..." />
-                          </div>
-                        ) : threadError ? (
-                          <div className="h-full flex items-center justify-center">
-                            <ErrorState
-                              error={threadError}
-                              onRetry={() => handleSelectCitizen(selectedCitizen)}
+                      {/* Active Meeting Controls in Inbox Thread */}
+                      {(() => {
+                        const citizenBooking =
+                          localRequests.find(
+                            (r) =>
+                              String(r.user_id) === String(selectedCitizen?.user_id) &&
+                              (r.status === 'confirmed' || r.status === 'completion_requested' || r.status === 'completed' || (r.meeting_started_at && !r.meeting_ended_at))
+                          ) ||
+                          localRequests.find(
+                            (r) => String(r.user_id) === String(selectedCitizen?.user_id)
+                          );
+
+                        if (!citizenBooking || (!['confirmed', 'completion_requested', 'completed'].includes(citizenBooking.status) && !citizenBooking.meeting_started_at)) {
+                          return null;
+                        }
+
+                        return (
+                          <div className="px-6 py-3 bg-zinc-950/80 border-b border-zinc-800 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+                                <Video className="h-3.5 w-3.5" />
+                                <span>Consultation Session</span>
+                              </span>
+                              <p className="text-xs text-zinc-300 font-medium">
+                                {citizenBooking.schedule_date || citizenBooking.date || 'Today'} • {citizenBooking.start_time || '10:00 AM'}{citizenBooking.end_time ? ` - ${citizenBooking.end_time}` : ''}
+                              </p>
+                            </div>
+                            <MeetingControls
+                              booking={citizenBooking}
+                              isLawyer={true}
+                              compact={true}
+                              currentUserId={user?.id}
+                              onBookingUpdate={(updated) => {
+                                setLocalRequests((prev) =>
+                                  prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+                                );
+                                reloadReq();
+                              }}
+                              onOpenReviewModal={(b) => {
+                                setReviewModalBooking(b);
+                                setIsReviewModalOpen(true);
+                              }}
                             />
                           </div>
-                        ) : threadMessages.length === 0 ? (
-                          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-400">
-                            <MessageSquare className="h-8 w-8 text-zinc-600 mb-2" />
-                            <p className="text-sm font-semibold text-zinc-300">No messages in thread</p>
-                            <p className="text-xs text-zinc-500 mt-1">
-                              Send a reply below to reach out to this citizen.
-                            </p>
-                          </div>
-                        ) : (
-                          threadMessages.map((msg) => {
-                            const isLawyer =
-                              msg.sender_user_id === user?.id || msg.sender_role === 'lawyer';
+                        );
+                      })()}
 
-                            return (
-                              <div
-                                key={msg.id}
-                                className={`flex flex-col ${isLawyer ? 'items-end' : 'items-start'}`}
-                              >
-                                <div className="flex items-center gap-1.5 mb-1 px-1">
-                                  <span className="text-[11px] font-medium text-zinc-400">
-                                    {isLawyer ? 'You (Advocate)' : selectedCitizen.name || 'Citizen'}
-                                  </span>
-                                  <span className="text-[10px] text-zinc-500 font-mono">
-                                    {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                                  </span>
-                                </div>
-                                <div
-                                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
-                                    isLawyer
-                                      ? 'bg-blue-600 text-white rounded-br-none'
-                                      : 'bg-zinc-800 text-zinc-100 rounded-bl-none border border-zinc-700/60'
-                                  }`}
-                                >
-                                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                        <div ref={threadEndRef} />
-                      </div>
-
-                      {/* Reply Box at Bottom */}
-                      <div className="p-4 bg-zinc-900 border-t border-zinc-800">
-                        <form onSubmit={handleSendReply} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={replyText}
-                            onChange={(e) => setReplyText(e.target.value)}
-                            placeholder={`Reply to ${selectedCitizen.name || 'Citizen'}...`}
-                            disabled={replySending}
-                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                          />
-                          <button
-                            type="submit"
-                            disabled={!replyText.trim() || replySending}
-                            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium px-5 py-3 rounded-xl transition-colors flex items-center gap-2 shrink-0 shadow-lg shadow-blue-500/20"
-                          >
-                            <Send className="h-4 w-4" />
-                            <span className="hidden sm:inline">Send Reply</span>
-                          </button>
-                        </form>
+                      {/* Shared DirectMessageThread component */}
+                      <div className="flex-1 min-h-[460px] max-h-[560px]">
+                        <DirectMessageThread
+                          messages={threadMessages}
+                          currentUserId={user?.id}
+                          recipientName={selectedCitizen.name || selectedCitizen.full_name || 'Citizen'}
+                          onSendMessage={handleSendReply}
+                          loading={threadLoading}
+                          error={threadError}
+                          onRetry={() => handleSelectCitizen(selectedCitizen)}
+                          isReadOnly={isSelectedClientReadOnly}
+                          isLawyerView={true}
+                          placeholder={`Reply to ${selectedCitizen.name || selectedCitizen.full_name || 'Citizen'}...`}
+                        />
                       </div>
                     </Card>
                   ) : (
@@ -1240,7 +1530,135 @@ export default function LawyerDashboard() {
             </Card>
           </div>
         )}
+
+        {/* Tab Content: Meeting Settings */}
+        {activeTab === 'meetings' && (
+          <div className="space-y-6 animate-in fade-in duration-200 max-w-3xl">
+            <div>
+              <h2 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
+                <Video className="h-5 w-5 text-blue-500" /> Consultation Meeting Settings
+              </h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Configure your default consultation meeting provider and meeting link or phone number.
+                When a client booking is confirmed, this link is automatically attached to the consultation session.
+              </p>
+            </div>
+
+            <Card>
+              <CardContent className="p-6">
+                <form onSubmit={handleSaveMeetingSettings} className="space-y-6">
+                  {/* Provider Dropdown */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-zinc-200">
+                      Meeting Provider
+                    </label>
+                    <select
+                      id="meeting-provider-select"
+                      value={meetingProvider}
+                      onChange={(e) => setMeetingProvider(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer"
+                    >
+                      <option value="Google Meet">Google Meet</option>
+                      <option value="Zoom">Zoom</option>
+                      <option value="Microsoft Teams">Microsoft Teams</option>
+                      <option value="Phone Call">Phone Call</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <p className="text-xs text-zinc-500">
+                      Choose which platform you use for your video consultations or select Phone Call.
+                    </p>
+                  </div>
+
+                  {/* Meeting Link or Phone Number */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-zinc-200">
+                      Meeting Link or Phone Number
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="meeting-link-input"
+                        type="text"
+                        required
+                        value={meetingLink}
+                        onChange={(e) => setMeetingLink(e.target.value)}
+                        placeholder={
+                          meetingProvider === 'Phone Call'
+                            ? '+88017XXXXXXXX'
+                            : 'https://meet.google.com/abc-defg-hij'
+                        }
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 font-mono placeholder:font-sans placeholder:text-zinc-600 focus:ring-2 focus:ring-blue-500/50 outline-none"
+                      />
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      Enter your permanent room link (e.g. Google Meet, Zoom personal room) or direct phone number.
+                    </p>
+                  </div>
+
+                  {/* Live Client Preview Box */}
+                  {meetingLink && (
+                    <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800 space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                        Client Preview
+                      </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-xs px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium shrink-0">
+                            {meetingProvider}
+                          </span>
+                          <span className="text-xs font-mono text-zinc-300 truncate">
+                            {meetingLink}
+                          </span>
+                        </div>
+                        <a
+                          href={
+                            /^https?:\/\//i.test(meetingLink) || /^tel:/i.test(meetingLink)
+                              ? meetingLink
+                              : `https://${meetingLink}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium shrink-0"
+                        >
+                          <span>Test Link</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">
+                      Changes apply immediately to newly confirmed bookings.
+                    </span>
+                    <Button
+                      type="submit"
+                      disabled={savingMeetingSettings}
+                      isLoading={savingMeetingSettings}
+                      className="bg-blue-600 hover:bg-blue-500 text-white px-6 font-semibold shadow-md shadow-blue-500/20"
+                    >
+                      Save Meeting Settings
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
+
+      {/* Review Modal */}
+      <ReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          setReviewModalBooking(null);
+        }}
+        booking={reviewModalBooking}
+        revieweeName={reviewModalBooking?.user_name || reviewModalBooking?.client_name || reviewModalBooking?.clientName || 'Client'}
+        onReviewSubmitted={() => {
+          reloadReq();
+        }}
+      />
     </div>
   );
 }

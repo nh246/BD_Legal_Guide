@@ -19,6 +19,7 @@ import LawyerDirectoryPage from './pages/client/LawyerDirectoryPage';
 import LawyerProfilePage from './pages/client/LawyerProfilePage';
 import BookingPage from './pages/client/BookingPage';
 import MyBookingsPage from './pages/client/MyBookingsPage';
+import MyCasesPage from './pages/client/MyCasesPage';
 import ConsultationChatPage from './pages/client/ConsultationChatPage';
 
 // Lawyer Pages
@@ -93,6 +94,7 @@ function App() {
             <Route path="lawyers/:id" element={<LawyerProfilePage />} />
             <Route path="book/:id" element={<BookingPage />} />
             <Route path="bookings" element={<MyBookingsPage />} />
+            <Route path="cases" element={<MyCasesPage />} />
             <Route path="consultation/:id" element={<ConsultationChatPage />} />
           </Route>
 

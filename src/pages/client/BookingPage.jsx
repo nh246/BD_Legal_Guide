@@ -6,6 +6,7 @@ import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import EmptyState from '../../components/ui/EmptyState';
 import useApi from '../../lib/useApi';
 import api, { getErrorMessage } from '../../lib/api';
+import CompletePaymentModal from '../../components/ui/CompletePaymentModal';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
@@ -84,6 +85,9 @@ export default function BookingPage() {
     return true;
   };
 
+  const [createdBooking, setCreatedBooking] = useState(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
   const handleNext = async () => {
     if (step < 3) {
       setStep(step + 1);
@@ -91,7 +95,7 @@ export default function BookingPage() {
       setIsSubmitting(true);
       setSubmitError(null);
       try {
-        await api.post('/bookings', {
+        const res = await api.post('/bookings', {
           lawyer_id: id,
           schedule_id: selectedSlot?.schedule_id || selectedSlot?.id || undefined,
           slot: selectedSlot,
@@ -99,7 +103,12 @@ export default function BookingPage() {
           start_time: selectedSlot?.start_time || selectedSlot?.time,
           case_brief: caseBrief,
         });
+        const bookingData = res.data;
+        setCreatedBooking(bookingData);
         setIsSuccess(true);
+        if (bookingData.status === 'awaiting_payment') {
+          setIsPaymentModalOpen(true);
+        }
       } catch (err) {
         setSubmitError(getErrorMessage(err, 'Could not complete booking'));
       } finally {
@@ -109,24 +118,53 @@ export default function BookingPage() {
   };
 
   if (isSuccess) {
+    const isAwaitingPay = createdBooking?.status === 'awaiting_payment';
+    const isPaySubmitted = createdBooking?.status === 'payment_submitted';
+
     return (
       <div className="min-h-[calc(100vh-64px)] bg-zinc-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
         <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center mb-6">
           <CheckCircle2 className="h-12 w-12 text-emerald-500" />
         </div>
 
-        <h1 className="text-3xl font-bold text-zinc-50 mb-2">Booking Requested!</h1>
-        <p className="text-zinc-400 mb-8">Your request has been sent to {lawyer.name}.</p>
+        <h1 className="text-3xl font-bold text-zinc-50 mb-2">
+          {isPaySubmitted ? 'Payment Proof Submitted!' : isAwaitingPay ? 'Booking Reserved — Payment Required' : 'Booking Confirmed!'}
+        </h1>
+        <p className="text-zinc-400 mb-8">
+          {isPaySubmitted
+            ? `Your payment is under review. ${lawyer.name} will confirm shortly.`
+            : isAwaitingPay
+            ? `Please submit your consultation fee to complete your booking with ${lawyer.name}.`
+            : `Your consultation request has been confirmed with ${lawyer.name}.`}
+        </p>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full mb-8 text-left">
-          <div className="flex items-center gap-3 text-sm text-zinc-300 mb-3">
-            <Calendar className="h-5 w-5 text-blue-500" />
-            {selectedSlot?.day}, {selectedSlot?.time} (30 mins)
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full mb-8 text-left space-y-3">
+          <div className="flex items-center gap-3 text-sm text-zinc-300">
+            <Calendar className="h-5 w-5 text-blue-500 shrink-0" />
+            <span>{selectedSlot?.day || selectedSlot?.date}, {selectedSlot?.time || selectedSlot?.start_time} (30 mins)</span>
           </div>
           <div className="flex items-center gap-3 text-sm text-zinc-300">
-            <ShieldCheck className="h-5 w-5 text-blue-500" />
-            Your lawyer will confirm and provide meeting details shortly.
+            <ShieldCheck className="h-5 w-5 text-blue-500 shrink-0" />
+            <span>
+              {isPaySubmitted
+                ? 'Payment proof submitted. Meeting link will be ready once confirmed.'
+                : isAwaitingPay
+                ? 'Slot reserved. Pay via bKash/Nagad and submit your TrxID.'
+                : 'Your lawyer will confirm and provide meeting details shortly.'}
+            </span>
           </div>
+
+          {isAwaitingPay && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(true)}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+              >
+                Complete Payment Now
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
@@ -143,6 +181,13 @@ export default function BookingPage() {
             Go to My Bookings <ArrowRight className="h-4 w-4" />
           </button>
         </div>
+
+        <CompletePaymentModal
+          isOpen={isPaymentModalOpen}
+          onClose={() => setIsPaymentModalOpen(false)}
+          booking={createdBooking}
+          onPaymentSubmitted={(updated) => setCreatedBooking(updated)}
+        />
       </div>
     );
   }

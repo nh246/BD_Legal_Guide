@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Scale, Bell, LogOut, User, Menu, X, MessageSquare, Users, Calendar, LayoutDashboard } from 'lucide-react';
 import useAuthStore from '../../store/useAuthStore';
 import { homeForRole } from '../../lib/roles';
 import useApi from '../../lib/useApi';
-import { asList } from '../../lib/api';
+import api, { asList } from '../../lib/api';
+import NotificationDropdown from '../ui/NotificationDropdown';
 
 export default function Navbar() {
   const { user, token, logout } = useAuthStore();
@@ -15,11 +16,99 @@ export default function Navbar() {
   const pathname = location.pathname;
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const dropdownRef = useRef(null);
 
-  // Close mobile drawer on route navigation
+  // Close mobile drawer and dropdown on route navigation
   useEffect(() => {
     setMobileMenuOpen(false);
+    setDropdownOpen(false);
   }, [pathname]);
+
+  // Fetch notifications for authenticated user
+  const fetchNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await api.get('/notifications');
+      setNotifications(res.data?.notifications || []);
+      setUnreadCount(typeof res.data?.unread_count === 'number' ? res.data.unread_count : 0);
+    } catch {
+      // Ignore background polling errors
+    }
+  }, [token]);
+
+  // Polling every 30 seconds and window focus listener
+  useEffect(() => {
+    if (!token) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    fetchNotifications();
+
+    const intervalId = setInterval(fetchNotifications, 30000);
+
+    const handleFocus = () => {
+      fetchNotifications();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [token, fetchNotifications]);
+
+  // Close dropdown if user clicks outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [dropdownOpen]);
+
+  // Notification action handlers
+  const handleMarkAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setUnreadCount(0);
+    try {
+      await api.post('/notifications/read-all');
+    } catch (err) {
+      console.error('Failed to mark all notifications as read', err);
+    } finally {
+      fetchNotifications();
+    }
+  };
+
+  const handleNotificationClick = async (notif) => {
+    setDropdownOpen(false);
+    if (!notif.is_read) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+      try {
+        await api.post(`/notifications/${notif.id}/read`);
+      } catch (err) {
+        console.error('Failed to mark notification as read', err);
+      } finally {
+        fetchNotifications();
+      }
+    }
+    if (notif.link) {
+      navigate(notif.link);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -154,13 +243,35 @@ export default function Navbar() {
           <div className="flex items-center gap-3">
             {token && user ? (
               <div className="flex items-center gap-3">
-                <button
-                  className="p-2 text-zinc-400 hover:text-zinc-50 transition-colors relative rounded-lg hover:bg-zinc-800/50"
-                  title="Notifications"
-                >
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-zinc-950"></span>
-                </button>
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    id="nav-btn-notifications"
+                    type="button"
+                    onClick={() => setDropdownOpen((prev) => !prev)}
+                    className={`p-2 text-zinc-400 hover:text-zinc-50 transition-colors relative rounded-lg hover:bg-zinc-800/50 cursor-pointer ${
+                      dropdownOpen ? 'bg-zinc-800/70 text-zinc-100' : ''
+                    }`}
+                    title="Notifications"
+                    aria-label="Toggle notifications dropdown"
+                    aria-expanded={dropdownOpen}
+                  >
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center shadow-md shadow-red-500/40">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <NotificationDropdown
+                    isOpen={dropdownOpen}
+                    onClose={() => setDropdownOpen(false)}
+                    notifications={notifications}
+                    unreadCount={unreadCount}
+                    onMarkAllRead={handleMarkAllRead}
+                    onNotificationClick={handleNotificationClick}
+                  />
+                </div>
 
                 <div className="flex items-center gap-2 pl-2 border-l border-zinc-800 text-sm">
                   {avatarAsset ? (

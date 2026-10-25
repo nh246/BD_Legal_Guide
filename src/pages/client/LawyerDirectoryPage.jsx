@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, MapPin, ShieldCheck, BadgeCheck, FilterX, Users, Calendar, Briefcase, SearchX, Sparkles } from 'lucide-react';
+import { Search, MapPin, ShieldCheck, BadgeCheck, FilterX, Users, Calendar, Briefcase, SearchX, Sparkles, Star } from 'lucide-react';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
 import { asList } from '../../lib/api';
@@ -308,35 +308,49 @@ export default function LawyerDirectoryPage() {
                 >
                   {/* Top: Avatar */}
                   <div className="flex items-center gap-4 mb-4">
-                    <div
-                      className={`shrink-0 h-16 w-16 rounded-full overflow-hidden flex items-center justify-center border-2 ${
-                        isGold
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                          : 'bg-blue-600/10 text-blue-400 border-blue-500/30'
-                      }`}
-                    >
-                      {lawyer.avatar_asset_id ? (
-                        <img
-                          src={`/api/assets/${lawyer.avatar_asset_id}/file`}
-                          alt={lawyer.name}
-                          className="h-full w-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            if (e.currentTarget.nextSibling) {
-                              e.currentTarget.nextSibling.style.display = 'block';
-                            }
-                          }}
-                        />
-                      ) : null}
-                      <span
-                        className="text-xl font-bold"
-                        style={{ display: lawyer.avatar_asset_id ? 'none' : 'block' }}
+                    <div className="relative shrink-0">
+                      <div
+                        className={`h-16 w-16 rounded-full overflow-hidden flex items-center justify-center border-2 ${
+                          isGold
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                            : 'bg-blue-600/10 text-blue-400 border-blue-500/30'
+                        }`}
                       >
-                        {getInitials(lawyer.name)}
-                      </span>
+                        {lawyer.avatar_asset_id ? (
+                          <img
+                            src={`/api/assets/${lawyer.avatar_asset_id}/file`}
+                            alt={lawyer.name}
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              if (e.currentTarget.nextSibling) {
+                                e.currentTarget.nextSibling.style.display = 'block';
+                              }
+                            }}
+                          />
+                        ) : null}
+                        <span
+                          className="text-xl font-bold"
+                          style={{ display: lawyer.avatar_asset_id ? 'none' : 'block' }}
+                        >
+                          {getInitials(lawyer.name)}
+                        </span>
+                      </div>
+                      <span
+                        className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-zinc-900 ${
+                          lawyer.presence_status === 'in_consultation'
+                            ? 'bg-amber-400 animate-pulse'
+                            : 'bg-green-400'
+                        }`}
+                        title={
+                          lawyer.presence_status === 'in_consultation'
+                            ? 'In Consultation — Currently in a meeting. Replies may be delayed.'
+                            : 'Available'
+                        }
+                      />
                     </div>
 
-                    {/* Name Row: Lawyer name + Verification badge */}
+                    {/* Name Row: Lawyer name + Verification badge + Presence dot */}
                     <div className="min-w-0 flex-1">
                       <h3 className="text-lg font-semibold text-zinc-50 flex items-center gap-1.5 truncate">
                         <span className="truncate">{lawyer.name}</span>
@@ -352,11 +366,37 @@ export default function LawyerDirectoryPage() {
                           />
                         )}
                       </h3>
-                      {lawyer.bar_council_id && (
+
+                      {/* Presence Indicator */}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {lawyer.presence_status === 'in_consultation' ? (
+                          <div
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 cursor-help"
+                            title="Currently in a meeting. Replies may be delayed."
+                          >
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+                            </span>
+                            <span>In Consultation</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-green-400">
+                            <span className="h-2 w-2 rounded-full bg-green-400"></span>
+                            <span>Available</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {lawyer.presence_status === 'in_consultation' ? (
+                        <p className="text-[11px] text-amber-400/80 truncate mt-0.5" title="Currently in a meeting. Replies may be delayed.">
+                          Currently in a meeting. Replies may be delayed.
+                        </p>
+                      ) : lawyer.bar_council_id ? (
                         <p className="text-xs font-mono text-zinc-500 truncate mt-0.5">
                           ID: {lawyer.bar_council_id}
                         </p>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
@@ -364,6 +404,43 @@ export default function LawyerDirectoryPage() {
                   <p className="text-sm text-zinc-400 mb-2">
                     {district} • {yearsExp} yrs experience • {languages}
                   </p>
+
+                  {/* Rating Row: 5 Gold Stars or 'New lawyer' chip */}
+                  <div className="flex items-center gap-2 mb-3">
+                    {lawyer.avg_rating !== null && lawyer.avg_rating !== undefined ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-0.5 text-amber-400">
+                          {[1, 2, 3, 4, 5].map((starVal) => {
+                            const fillPercentage = Math.max(0, Math.min(1, Number(lawyer.avg_rating) - (starVal - 1)));
+                            return (
+                              <div key={starVal} className="relative">
+                                <Star className="h-4 w-4 text-zinc-700" />
+                                {fillPercentage > 0 && (
+                                  <div
+                                    className="absolute inset-0 overflow-hidden"
+                                    style={{ width: `${fillPercentage * 100}%` }}
+                                  >
+                                    <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <span className="text-xs font-bold text-amber-300">
+                          {Number(lawyer.avg_rating).toFixed(1)}
+                        </span>
+                        <span className="text-xs text-zinc-400">
+                          ({lawyer.review_count || 0} reviews)
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        <Sparkles className="h-3 w-3" />
+                        <span>New lawyer</span>
+                      </span>
+                    )}
+                  </div>
 
                   {/* Fee Row: "৳{hourly_rate} / consultation" */}
                   <div className="text-lg font-bold text-white mb-3">
