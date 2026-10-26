@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Gavel, Star, Check, X, Clock, AlertCircle, ArrowRight, UserCheck, ShieldCheck } from 'lucide-react';
+import { Gavel, Star, Check, X, Clock, AlertCircle, ArrowRight, UserCheck, ShieldCheck, MessageSquare } from 'lucide-react';
 import Modal from './Modal';
 import Button from './Button';
 import Badge from './Badge';
 import { LoadingState } from './PageStates';
+import CaseDiscussionModal from './CaseDiscussionModal';
 import api, { getErrorMessage } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
+import useAuthStore from '../../store/useAuthStore';
 
 export default function CaseBidsList({
   isOpen,
@@ -14,11 +16,13 @@ export default function CaseBidsList({
   onBidAccepted,
   onBidRejected,
 }) {
+  const { user } = useAuthStore();
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [actionType, setActionType] = useState(null); // 'accept' or 'reject'
+  const [discussionBid, setDiscussionBid] = useState(null);
 
   const fetchCaseDetails = useCallback(async () => {
     if (!caseId || !isOpen) return;
@@ -48,12 +52,18 @@ export default function CaseBidsList({
     setActionType('accept');
     try {
       const res = await api.post(`/cases/${caseId}/bids/${bid.id}/accept`);
-      toast('Bid accepted! Booking created. Proceed to payment.', 'success');
+      if (res.data?.booking_status === 'confirmed') {
+        toast('Bid accepted! Free consultation booking confirmed.', 'success');
+      } else {
+        toast('Bid accepted! Booking created. Proceed to payment.', 'success');
+      }
       if (onBidAccepted) {
         onBidAccepted({
           bookingId: res.data?.booking_id,
           caseId,
           bidId: bid.id,
+          bookingStatus: res.data?.booking_status,
+          fee: res.data?.fee,
         });
       }
       onClose();
@@ -196,9 +206,15 @@ export default function CaseBidsList({
                     <span className="text-[11px] uppercase font-semibold text-zinc-400 tracking-wider">
                       Proposed Fee
                     </span>
-                    <span className="text-lg sm:text-xl font-extrabold text-emerald-400 font-mono">
-                      ৳{Number(bid.proposed_fee).toLocaleString()}
-                    </span>
+                    {bid.proposed_fee != null ? (
+                      <span className="text-lg sm:text-xl font-extrabold text-emerald-400 font-mono">
+                        ৳{Number(bid.proposed_fee).toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                        Fee: To be discussed
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -222,6 +238,16 @@ export default function CaseBidsList({
                   </div>
 
                   <div className="flex items-center gap-2.5">
+                    {/* Discuss Outline Button */}
+                    <button
+                      type="button"
+                      onClick={() => setDiscussionBid(bid)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400 transition-colors cursor-pointer"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      <span>Discuss</span>
+                    </button>
+
                     {isAccepted ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                         <Check className="h-3.5 w-3.5" />
@@ -272,6 +298,17 @@ export default function CaseBidsList({
           Close
         </Button>
       </div>
+
+      {discussionBid && (
+        <CaseDiscussionModal
+          isOpen={Boolean(discussionBid)}
+          onClose={() => setDiscussionBid(null)}
+          caseItem={caseData}
+          bid={discussionBid}
+          currentUser={user}
+          isLawyerView={false}
+        />
+      )}
     </Modal>
   );
 }

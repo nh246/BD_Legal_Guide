@@ -13,6 +13,17 @@ import ReviewModal from '../../components/ui/ReviewModal';
 import PostCaseModal from '../../components/ui/PostCaseModal';
 import CaseBidsList from '../../components/ui/CaseBidsList';
 import ProPaywallModal from '../../components/ui/ProPaywallModal';
+import BookingThreadModal from '../../components/ui/BookingThreadModal';
+import CaseDiscussionModal from '../../components/ui/CaseDiscussionModal';
+import {
+  isUpcoming,
+  isPast,
+  isCancelled,
+  formatSlot,
+  chatAllowed,
+  isCaseBoardBooking,
+  getBookingDateStr,
+} from '../../utils/bookings';
 import useApi from '../../lib/useApi';
 import useAuthStore from '../../store/useAuthStore';
 import api, { asList, getErrorMessage } from '../../lib/api';
@@ -40,6 +51,32 @@ export default function ClientDashboard() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewModalBooking, setReviewModalBooking] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Thread & Case Discussion modal states
+  const [threadModalBooking, setThreadModalBooking] = useState(null);
+  const [isThreadModalOpen, setIsThreadModalOpen] = useState(false);
+  const [caseDiscussionCase, setCaseDiscussionCase] = useState(null);
+  const [caseDiscussionBid, setCaseDiscussionBid] = useState(null);
+  const [isCaseDiscussionOpen, setIsCaseDiscussionOpen] = useState(false);
+
+  const handleOpenCaseDiscussion = (b) => {
+    setCaseDiscussionCase({
+      id: b.case_id,
+      title: b.case_title || 'Case Discussion',
+      status: 'assigned',
+      category: 'Case Matter',
+    });
+    setCaseDiscussionBid({
+      id: b.bid_id,
+      lawyer_name: b.lawyer_name || b.lawyerName || 'Advocate',
+    });
+    setIsCaseDiscussionOpen(true);
+  };
+
+  const handleOpenThread = (b) => {
+    setThreadModalBooking(b);
+    setIsThreadModalOpen(true);
+  };
 
   // Case Board state
   const [activeDashboardTab, setActiveDashboardTab] = useState('consultations');
@@ -151,16 +188,9 @@ export default function ClientDashboard() {
     );
   };
 
-  // Section "Upcoming": awaiting_payment + payment_submitted + pending + confirmed + completion_requested, sorted ascending (soonest first)
+  // Section "Upcoming": filter via isUpcoming helper, sorted ascending (soonest first)
   const upcomingBookings = bookings
-    .filter(
-      (b) =>
-        b.status === 'confirmed' ||
-        b.status === 'completion_requested' ||
-        b.status === 'pending' ||
-        b.status === 'awaiting_payment' ||
-        b.status === 'payment_submitted'
-    )
+    .filter(isUpcoming)
     .sort((a, b) => {
       const dateA = getBookingDateStr(a);
       const dateB = getBookingDateStr(b);
@@ -172,9 +202,9 @@ export default function ClientDashboard() {
 
   const nextBooking = upcomingBookings[0] || null;
 
-  // Section "History": cancelled + completed rows, dimmed style
+  // Section "History": filter via isPast or isCancelled helpers, dimmed style
   const historyBookings = bookings
-    .filter((b) => b.status === 'cancelled' || b.status === 'completed' || b.status === 'declined')
+    .filter((b) => isPast(b) || isCancelled(b))
     .sort((a, b) => {
       const dateA = getBookingDateStr(a);
       const dateB = getBookingDateStr(b);
@@ -482,7 +512,7 @@ export default function ClientDashboard() {
                     {formatDateEnGB(nextBooking.schedule_date || nextBooking.date || nextBooking.start)}
                   </p>
                   <p className="text-xs text-zinc-400 font-mono">
-                    {formatTimeRange(nextBooking)}
+                    {formatSlot(nextBooking)}
                   </p>
                 </div>
               ) : (
@@ -684,24 +714,70 @@ export default function ClientDashboard() {
                             <div className="text-xs text-zinc-400 flex flex-wrap items-center gap-2 font-mono">
                               <span>{formatDateEnGB(b.schedule_date || b.date || b.start)}</span>
                               <span>•</span>
-                              <span>{formatTimeRange(b)}</span>
+                              <span>{formatSlot(b)}</span>
                             </div>
                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2.5 sm:self-center">
+                          {isCaseBoardBooking(b) && (
+                            <Link
+                              to="/client/cases"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                              title="View Case on Case Board"
+                            >
+                              <Briefcase className="h-3 w-3" />
+                              <span>Case Board</span>
+                            </Link>
+                          )}
+
                           {b.status === 'awaiting_payment' && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="bg-amber-600 hover:bg-amber-500 text-white gap-1.5 font-semibold shadow-lg shadow-amber-600/20"
+                                onClick={() => {
+                                  setPaymentModalBooking(b);
+                                  setIsPaymentModalOpen(true);
+                                }}
+                              >
+                                <CreditCard className="h-3.5 w-3.5" /> Pay Now ৳{b.fee || 2000}
+                              </Button>
+
+                              {isCaseBoardBooking(b) && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="gap-1.5 text-zinc-300 hover:text-white"
+                                  onClick={() => handleOpenCaseDiscussion(b)}
+                                >
+                                  <MessageSquare className="h-3.5 w-3.5 text-blue-400" /> Discuss Case
+                                </Button>
+                              )}
+                            </>
+                          )}
+
+                          {chatAllowed(b) && (
                             <Button
                               size="sm"
-                              className="bg-amber-600 hover:bg-amber-500 text-white gap-1.5 font-semibold shadow-lg shadow-amber-600/20"
-                              onClick={() => {
-                                setPaymentModalBooking(b);
-                                setIsPaymentModalOpen(true);
-                              }}
+                              className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 font-semibold shadow-sm"
+                              onClick={() => handleOpenThread(b)}
                             >
-                              <CreditCard className="h-3.5 w-3.5" /> Pay Now
+                              <MessageSquare className="h-3.5 w-3.5" /> Open Thread
                             </Button>
                           )}
+
+                          {(b.meet_link || b.meeting_link) && chatAllowed(b) && (
+                            <a
+                              href={b.meet_link || b.meeting_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                            >
+                              <Video className="h-3.5 w-3.5" /> Join Meeting
+                            </a>
+                          )}
+
                           {b.status === 'completion_requested' && (
                             b.completion_requested_by === 'client' ? (
                               <span className="text-xs text-zinc-400 italic">Waiting for lawyer to confirm...</span>
@@ -774,12 +850,22 @@ export default function ClientDashboard() {
                             <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-2 font-mono">
                               <span>{formatDateEnGB(b.schedule_date || b.date || b.start || b.created_at)}</span>
                               <span>•</span>
-                              <span>{formatTimeRange(b)}</span>
+                              <span>{formatSlot(b)}</span>
                             </div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2.5 sm:self-center">
+                          {b.status === 'completed' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="gap-1.5 bg-zinc-800 text-zinc-300 hover:text-white"
+                              onClick={() => handleOpenThread(b)}
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 text-zinc-400" /> Open Thread
+                            </Button>
+                          )}
                           {b.status === 'completed' && !b.has_reviewed && (
                             <Button
                               size="sm"
@@ -1010,7 +1096,7 @@ export default function ClientDashboard() {
         footer={
           <div className="flex flex-wrap items-center justify-between gap-3 w-full">
             <div className="flex flex-wrap items-center gap-2">
-              {selectedBooking?.status === 'pending' && (
+              {(selectedBooking?.status === 'pending' || selectedBooking?.status === 'awaiting_payment') && (
                 <Button
                   id="btn-cancel-booking-modal"
                   variant="danger"
@@ -1149,7 +1235,7 @@ export default function ClientDashboard() {
               <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-1">
                 <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Time Window</span>
                 <p className="font-semibold text-zinc-100 font-mono text-sm">
-                  {formatTimeRange(selectedBooking)}
+                  {formatSlot(selectedBooking)}
                 </p>
               </div>
             </div>
@@ -1183,7 +1269,6 @@ export default function ClientDashboard() {
             )}
 
             <div className="text-xs text-zinc-500 flex items-center justify-between pt-1">
-              <span>Booking ID: <span className="font-mono text-zinc-400">#{selectedBooking.id}</span></span>
               {selectedBooking.created_at && (
                 <span>Booked: {formatDateEnGB(selectedBooking.created_at)}</span>
               )}
@@ -1297,6 +1382,36 @@ export default function ClientDashboard() {
           setIsCasePaywallOpen(false);
           setIsPostCaseModalOpen(true);
         }}
+      />
+
+      {/* Booking Direct Message Thread Modal */}
+      <BookingThreadModal
+        isOpen={isThreadModalOpen}
+        onClose={() => {
+          setIsThreadModalOpen(false);
+          setThreadModalBooking(null);
+        }}
+        booking={threadModalBooking}
+        currentUser={user}
+        onReviewClick={(b) => {
+          setIsThreadModalOpen(false);
+          setReviewModalBooking(b);
+          setIsReviewModalOpen(true);
+        }}
+      />
+
+      {/* Case Discussion Modal */}
+      <CaseDiscussionModal
+        isOpen={isCaseDiscussionOpen}
+        onClose={() => {
+          setIsCaseDiscussionOpen(false);
+          setCaseDiscussionCase(null);
+          setCaseDiscussionBid(null);
+        }}
+        caseItem={caseDiscussionCase}
+        bid={caseDiscussionBid}
+        currentUser={user}
+        isLawyerView={false}
       />
     </div>
   );

@@ -195,6 +195,7 @@ export default function DirectMessageThread({
   error = null,
   onRetry,
   isReadOnly = false,
+  readOnlyMessage = 'Consultation completed. This thread is read-only.',
   isLawyerView = false,
   placeholder,
   booking,
@@ -444,7 +445,7 @@ export default function DirectMessageThread({
             <Lock className="h-3.5 w-3.5" />
           </div>
           <span className="text-xs sm:text-sm font-semibold text-zinc-300">
-            Consultation completed. This thread is read-only.
+            {readOnlyMessage || 'Consultation completed. This thread is read-only.'}
           </span>
         </div>
       ) : (

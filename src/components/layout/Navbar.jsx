@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Scale, Bell, LogOut, User, Menu, X, MessageSquare, Users, Calendar, LayoutDashboard } from 'lucide-react';
+import { Scale, Bell, LogOut, User, Menu, X, MessageSquare, Users, Calendar, LayoutDashboard, Briefcase, Sparkles, Lock } from 'lucide-react';
 import useAuthStore from '../../store/useAuthStore';
 import { homeForRole } from '../../lib/roles';
 import useApi from '../../lib/useApi';
@@ -11,6 +11,8 @@ export default function Navbar() {
   const { user, token, logout } = useAuthStore();
   const { data: assetsData } = useApi(token ? '/profile/assets' : null);
   const avatarAsset = asList(assetsData, 'assets').find((a) => a.kind === 'avatar');
+  const { data: subData } = useApi(token && user?.role === 'user' ? '/subscriptions/mine' : null);
+  const { data: lawyerProfile } = useApi(token && user?.role === 'lawyer' ? '/lawyer/me' : null);
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
@@ -122,9 +124,24 @@ export default function Navbar() {
   const isAvailability = pathname.startsWith('/lawyer/availability');
   const isProfile = pathname.startsWith('/lawyer/profile');
 
-  // Dashboard is active strictly when on user's primary dashboard, not when exploring Chat or Lawyer directory
+  const isUserPro = Boolean(
+    user?.is_pro ||
+    user?.plan?.startsWith('user_pro') ||
+    (subData?.status === 'active' && subData?.plan_code?.startsWith('user_pro'))
+  );
+
+  const isLawyerGold = Boolean(
+    lawyerProfile?.verification_status === 'approved' && lawyerProfile?.verification_paid === true
+  );
+
+  const isCaseBoard = Boolean(
+    (user?.role === 'lawyer' && pathname === '/lawyer' && (location.search.includes('tab=case-board') || location.search.includes('tab=cases'))) ||
+    (user?.role === 'user' && (pathname === '/client/cases' || pathname.startsWith('/client/cases')))
+  );
+
+  // Dashboard is active strictly when on user's primary dashboard, not when exploring Chat, Lawyer directory, or Case Board
   const isDashboard = Boolean(
-    user && !isChat && !isLawyers && !isPricing && !isAvailability && !isProfile && (
+    user && !isChat && !isLawyers && !isPricing && !isAvailability && !isProfile && !isCaseBoard && (
       pathname === homeForRole(user.role) ||
       (user.role === 'user' && (pathname === '/client' || pathname === '/dashboard' || pathname.startsWith('/client/bookings') || pathname.startsWith('/client/consultation'))) ||
       (user.role === 'lawyer' && (pathname === '/lawyer' || pathname.startsWith('/lawyer/requests'))) ||
@@ -157,6 +174,30 @@ export default function Navbar() {
 
           {/* Center: Desktop Navigation Links with dynamic active highlighting */}
           <div className="hidden md:flex items-center gap-2 lg:gap-4">
+            {/* Flagship Case Board for Lawyer */}
+            {user?.role === 'lawyer' && (
+              <Link
+                id="nav-link-case-board"
+                to="/lawyer?tab=case-board"
+                className={getLinkClasses(isCaseBoard)}
+              >
+                <Briefcase className="h-4 w-4" />
+                <span>Case Board</span>
+                {isLawyerGold ? (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30" title="Gold Verified">
+                    <Sparkles className="h-2.5 w-2.5 text-amber-400 fill-amber-400/30" />
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700" title="Requires Gold Verification">
+                    <Lock className="h-2.5 w-2.5 text-zinc-400" />
+                  </span>
+                )}
+                {isCaseBoard && (
+                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-500 rounded-full" />
+                )}
+              </Link>
+            )}
+
             {(!user || user.role === 'user' || user.role === 'admin') && (
               <>
                 <Link
@@ -183,6 +224,26 @@ export default function Navbar() {
                   )}
                 </Link>
               </>
+            )}
+
+            {/* Flagship Case Board for Client */}
+            {user?.role === 'user' && (
+              <Link
+                id="nav-link-case-board"
+                to="/client/cases"
+                className={getLinkClasses(isCaseBoard)}
+              >
+                <Briefcase className="h-4 w-4" />
+                <span>Case Board</span>
+                {!isUserPro && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30" title="Pro Feature">
+                    PRO
+                  </span>
+                )}
+                {isCaseBoard && (
+                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-500 rounded-full" />
+                )}
+              </Link>
             )}
 
             {user?.role === 'lawyer' && (
@@ -352,6 +413,30 @@ export default function Navbar() {
             </div>
           )}
 
+          {/* Flagship Case Board for Lawyer */}
+          {user?.role === 'lawyer' && (
+            <Link
+              id="mobile-nav-link-case-board"
+              to="/lawyer?tab=case-board"
+              className={`w-full justify-between ${getLinkClasses(isCaseBoard)}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <div className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4" />
+                <span>Case Board</span>
+              </div>
+              {isLawyerGold ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  <Sparkles className="h-2.5 w-2.5 text-amber-400 fill-amber-400/30" />
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                  <Lock className="h-2.5 w-2.5 text-zinc-400" />
+                </span>
+              )}
+            </Link>
+          )}
+
           {(!user || user.role === 'user' || user.role === 'admin') && (
             <>
               <Link
@@ -371,6 +456,26 @@ export default function Navbar() {
                 <span>Find Lawyers</span>
               </Link>
             </>
+          )}
+
+          {/* Flagship Case Board for Client */}
+          {user?.role === 'user' && (
+            <Link
+              id="mobile-nav-link-case-board"
+              to="/client/cases"
+              className={`w-full justify-between ${getLinkClasses(isCaseBoard)}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <div className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4" />
+                <span>Case Board</span>
+              </div>
+              {!isUserPro && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  PRO
+                </span>
+              )}
+            </Link>
           )}
 
           {user?.role === 'lawyer' && (

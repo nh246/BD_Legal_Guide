@@ -1,15 +1,28 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Video, FileText, X, CheckCircle2, Calendar, MessageSquare, CreditCard, Clock, Star } from 'lucide-react';
+import { Video, FileText, X, CheckCircle2, Calendar, MessageSquare, CreditCard, Clock, Star, Briefcase } from 'lucide-react';
 import EmptyState from '../../components/ui/EmptyState';
 import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import CompletePaymentModal from '../../components/ui/CompletePaymentModal';
 import ReviewModal from '../../components/ui/ReviewModal';
+import BookingThreadModal from '../../components/ui/BookingThreadModal';
+import CaseDiscussionModal from '../../components/ui/CaseDiscussionModal';
+import {
+  isUpcoming,
+  isPast,
+  isCancelled,
+  formatSlot,
+  chatAllowed,
+  isCaseBoardBooking,
+  getBookingDateStr,
+} from '../../utils/bookings';
+import useAuthStore from '../../store/useAuthStore';
 import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
 
 export default function MyBookingsPage() {
+  const { user } = useAuthStore();
   const { data, loading, error, reload } = useApi('/bookings/mine');
   const bookings = asList(data, 'bookings');
 
@@ -21,19 +34,37 @@ export default function MyBookingsPage() {
   const [reviewModalBooking, setReviewModalBooking] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
 
+  // Thread & Case Discussion modal states
+  const [threadModalBooking, setThreadModalBooking] = useState(null);
+  const [isThreadModalOpen, setIsThreadModalOpen] = useState(false);
+  const [caseDiscussionCase, setCaseDiscussionCase] = useState(null);
+  const [caseDiscussionBid, setCaseDiscussionBid] = useState(null);
+  const [isCaseDiscussionOpen, setIsCaseDiscussionOpen] = useState(false);
+
+  const handleOpenCaseDiscussion = (b) => {
+    setCaseDiscussionCase({
+      id: b.case_id,
+      title: b.case_title || 'Case Discussion',
+      status: 'assigned',
+      category: 'Case Matter',
+    });
+    setCaseDiscussionBid({
+      id: b.bid_id,
+      lawyer_name: b.lawyer_name || b.lawyerName || 'Advocate',
+    });
+    setIsCaseDiscussionOpen(true);
+  };
+
+  const handleOpenThread = (b) => {
+    setThreadModalBooking(b);
+    setIsThreadModalOpen(true);
+  };
+
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
-      if (activeTab === 'upcoming') {
-        return (
-          b.status === 'awaiting_payment' ||
-          b.status === 'payment_submitted' ||
-          b.status === 'pending' ||
-          b.status === 'confirmed' ||
-          b.status === 'completion_requested'
-        );
-      }
-      if (activeTab === 'past') return b.status === 'completed';
-      if (activeTab === 'cancelled') return b.status === 'cancelled';
+      if (activeTab === 'upcoming') return isUpcoming(b);
+      if (activeTab === 'past') return isPast(b);
+      if (activeTab === 'cancelled') return isCancelled(b);
       return false;
     });
   }, [bookings, activeTab]);
@@ -48,14 +79,25 @@ export default function MyBookingsPage() {
       .slice(0, 2)
       .toUpperCase() || 'L';
 
-  const formatDate = (isoString) => {
-    if (!isoString) return 'Date to be confirmed';
-    const date = new Date(isoString);
-    return (
-      date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
-      ', ' +
-      date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    );
+  const formatDateEnGB = (dateVal) => {
+    if (!dateVal) return 'Date to be confirmed';
+    if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
+      const [y, m, d] = dateVal.slice(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    }
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
   };
 
   const handleRequestCompletion = async (bookingId) => {
@@ -231,44 +273,84 @@ export default function MyBookingsPage() {
                       {getInitials(lawyerName)}
                     </div>
                     <div>
-                      <h3 className="text-base font-semibold text-zinc-50 mb-1">{lawyerName}</h3>
-                      <div className="text-sm text-zinc-400 mb-2">{formatDate(booking.start || booking.scheduled_time)}</div>
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <h3 className="text-base font-semibold text-zinc-50">{lawyerName}</h3>
+                        {isCaseBoardBooking(booking) && (
+                          <Link
+                            to="/client/cases"
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                            title="View on Case Board"
+                          >
+                            <Briefcase className="h-3 w-3" />
+                            <span>Case Board</span>
+                          </Link>
+                        )}
+                      </div>
+                      <div className="text-xs text-zinc-400 mb-2 flex items-center gap-2 font-mono">
+                        <span>{formatDateEnGB(getBookingDateStr(booking))}</span>
+                        <span>•</span>
+                        <span>{formatSlot(booking)}</span>
+                      </div>
                       <div className="flex items-center gap-3">
                         {getStatusBadge(booking.status, booking)}
-                        <span className="text-xs font-mono text-zinc-500">ID: {booking.id}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 md:justify-end">
                     {booking.status === 'awaiting_payment' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentModalBooking(booking);
+                            setIsPaymentModalOpen(true);
+                          }}
+                          className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-amber-600/20 transition-colors cursor-pointer"
+                        >
+                          <CreditCard className="h-4 w-4" /> Pay Now ৳{booking.fee || 2000}
+                        </button>
+
+                        {isCaseBoardBooking(booking) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCaseDiscussion(booking)}
+                            className="flex items-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                          >
+                            <MessageSquare className="h-4 w-4 text-blue-400" /> Discuss Case
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {chatAllowed(booking) && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setPaymentModalBooking(booking);
-                          setIsPaymentModalOpen(true);
-                        }}
-                        className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-amber-600/20 transition-colors"
+                        onClick={() => handleOpenThread(booking)}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer"
                       >
-                        <CreditCard className="h-4 w-4" /> Pay Now
+                        <MessageSquare className="h-4 w-4" /> Open Thread
+                      </button>
+                    )}
+
+                    {booking.status === 'completed' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenThread(booking)}
+                        className="flex items-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        <MessageSquare className="h-4 w-4 text-zinc-400" /> Open Thread
                       </button>
                     )}
 
                     {booking.case_brief || booking.caseBrief ? (
                       <button
                         onClick={() => setSelectedBrief(booking)}
-                        className="flex items-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        className="flex items-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                       >
                         <FileText className="h-4 w-4 text-zinc-500" /> View brief
                       </button>
                     ) : null}
-
-                    <Link
-                      to={`/client/consultation/${booking.id}`}
-                      className="flex items-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <MessageSquare className="h-4 w-4 text-blue-400" /> Chat
-                    </Link>
 
                     {booking.status === 'completion_requested' && (
                       booking.completion_requested_by === 'client' ? (
@@ -309,21 +391,21 @@ export default function MyBookingsPage() {
                       </button>
                     )}
 
-                    {(booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'awaiting_payment') && (
+                    {(booking.status === 'pending' || booking.status === 'awaiting_payment') && (
                       <button
                         onClick={() => cancelBooking(booking.id)}
-                        className="flex items-center gap-2 bg-zinc-950 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-zinc-400 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        className="flex items-center gap-2 bg-zinc-950 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-zinc-400 border border-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                       >
                         <X className="h-4 w-4" /> Cancel
                       </button>
                     )}
 
-                    {activeTab === 'upcoming' && booking.meet_link && (
+                    {chatAllowed(booking) && (booking.meet_link || booking.meeting_link) && (
                       <a
-                        href={booking.meet_link}
+                        href={booking.meet_link || booking.meeting_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"
+                        className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"
                       >
                         <Video className="h-4 w-4" /> Join Call
                       </a>
@@ -395,6 +477,36 @@ export default function MyBookingsPage() {
         onReviewSubmitted={() => {
           reload();
         }}
+      />
+
+      {/* Booking Direct Message Thread Modal */}
+      <BookingThreadModal
+        isOpen={isThreadModalOpen}
+        onClose={() => {
+          setIsThreadModalOpen(false);
+          setThreadModalBooking(null);
+        }}
+        booking={threadModalBooking}
+        currentUser={user}
+        onReviewClick={(b) => {
+          setIsThreadModalOpen(false);
+          setReviewModalBooking(b);
+          setIsReviewModalOpen(true);
+        }}
+      />
+
+      {/* Case Discussion Modal */}
+      <CaseDiscussionModal
+        isOpen={isCaseDiscussionOpen}
+        onClose={() => {
+          setIsCaseDiscussionOpen(false);
+          setCaseDiscussionCase(null);
+          setCaseDiscussionBid(null);
+        }}
+        caseItem={caseDiscussionCase}
+        bid={caseDiscussionBid}
+        currentUser={user}
+        isLawyerView={false}
       />
     </div>
   );

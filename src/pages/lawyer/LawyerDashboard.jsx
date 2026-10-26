@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Calendar,
   CheckCircle2,
@@ -24,13 +24,25 @@ import {
   Video,
   ExternalLink,
   Star,
+  Briefcase,
+  Gavel,
+  Lock,
+  Paperclip,
+  Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
-import DirectMessageThread from '../../components/ui/DirectMessageThread';
+import Modal from '../../components/ui/Modal';
+import AddSlotModal from '../../components/ui/AddSlotModal';
+import SubmitBidModal from '../../components/ui/SubmitBidModal';
+import DirectMessageThread, { openAssetInNewTab } from '../../components/ui/DirectMessageThread';
 import MeetingControls from '../../components/ui/MeetingControls';
 import ReviewModal from '../../components/ui/ReviewModal';
+import CaseDiscussionModal from '../../components/ui/CaseDiscussionModal';
+import BookingThreadModal from '../../components/ui/BookingThreadModal';
+
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
@@ -39,18 +51,160 @@ import { toast } from '../../store/useToastStore';
 
 export default function LawyerDashboard() {
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
   const { data: reqData, loading: reqLoading, error: reqError, reload: reloadReq } = useApi('/lawyer/requests');
   const { data: schedData, loading: schedLoading, error: schedError, reload: reloadSchedules } = useApi('/lawyer/schedules');
   const { data: inboxData, loading: inboxLoading, error: inboxError, reload: reloadInbox } = useApi('/messages/lawyer/inbox');
   const { data: assetsData, loading: assetsLoading, reload: reloadAssets } = useApi('/profile/assets');
+  const { data: lawyerProfile, loading: profileLoading, reload: reloadLawyerProfile } = useApi(
+    user?.role === 'lawyer' || user?.role === 'admin' ? '/lawyer/me' : null
+  );
 
-  const [activeTab, setActiveTab] = useState('consultations'); // 'consultations' | 'availability' | 'inbox' | 'profile'
+  const isGoldVerified = Boolean(
+    (lawyerProfile?.verification_status === 'approved' && lawyerProfile?.verification_paid === true) ||
+    user?.role === 'admin'
+  );
+
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'case-board' || tabParam === 'cases') return 'cases';
+    if (tabParam === 'my-bids' || tabParam === 'bids') return 'my-bids';
+    if (['consultations', 'availability', 'inbox', 'meetings', 'profile'].includes(tabParam)) return tabParam;
+    return 'consultations';
+  });
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'case-board' || tabParam === 'cases') {
+      setActiveTab('cases');
+    } else if (tabParam === 'my-bids' || tabParam === 'bids') {
+      setActiveTab('my-bids');
+    }
+  }, [searchParams]);
+
+  // Lawyer Bids tracking states
+  const {
+    data: myBidsData,
+    loading: myBidsLoading,
+    error: myBidsError,
+    reload: reloadMyBids,
+  } = useApi(user?.role === 'lawyer' || user?.role === 'admin' ? '/lawyer/bids' : null);
+
+  const myBids = asList(myBidsData, 'bids');
+  const pendingBids = myBids.filter((b) => b.bid_status === 'pending');
+  const wonBids = myBids.filter((b) => b.bid_status === 'accepted');
+  const lostBids = myBids.filter((b) => b.bid_status === 'rejected');
+
+  const [bidsConsultationBooking, setBidsConsultationBooking] = useState(null);
+  const [isBidsConsultationOpen, setIsBidsConsultationOpen] = useState(false);
+
+  const handleOpenBidDiscussion = (bidItem) => {
+    setDiscussionCase({
+      id: bidItem.case_id,
+      title: bidItem.case_title,
+      status: bidItem.case_status,
+      category: bidItem.category || 'General',
+      user_name: bidItem.client_name,
+      my_bid: {
+        id: bidItem.bid_id,
+        lawyer_name: lawyerProfile?.name || user?.full_name || 'Lawyer',
+        proposed_fee: bidItem.proposed_fee,
+        pitch_message: bidItem.pitch,
+        status: bidItem.bid_status,
+      },
+    });
+  };
+
+  const handleOpenWonConsultation = (bidItem) => {
+    if (bidItem.booking_id) {
+      setBidsConsultationBooking({
+        id: bidItem.booking_id,
+        case_id: bidItem.case_id,
+        bid_id: bidItem.bid_id,
+        bid_status: 'accepted',
+        case_title: bidItem.case_title,
+        client_name: bidItem.client_name,
+        user_name: bidItem.client_name,
+        status: 'confirmed',
+      });
+      setIsBidsConsultationOpen(true);
+    } else {
+      // Fallback directly to CaseDiscussionModal if no booking_id
+      handleOpenBidDiscussion(bidItem);
+    }
+  };
+
+  // Case Board states
+  const {
+    data: casesData,
+    loading: casesLoading,
+    error: casesError,
+    reload: reloadCases,
+  } = useApi(activeTab === 'cases' && isGoldVerified ? '/cases' : null);
+
+  const [selectedCaseCategory, setSelectedCaseCategory] = useState('All');
+  const [submittedCaseIds, setSubmittedCaseIds] = useState(new Set());
+  const [bidModalCase, setBidModalCase] = useState(null);
+  const [detailsModalCase, setDetailsModalCase] = useState(null);
+  const [discussionCase, setDiscussionCase] = useState(null);
+  const [downloadingAssetId, setDownloadingAssetId] = useState(null);
+
+  const hasLawyerBidOnCase = (caseItem) => {
+    if (!caseItem) return false;
+    if (submittedCaseIds.has(caseItem.id)) return true;
+    if (caseItem.my_bid) return true;
+    if (!lawyerProfile?.id) return false;
+    return Boolean(
+      caseItem.bids?.some(
+        (b) => String(b.lawyer_profile_id) === String(lawyerProfile.id)
+      )
+    );
+  };
+
+  const handleOpenAsset = async (assetId) => {
+    if (!assetId) return;
+    setDownloadingAssetId(assetId);
+    try {
+      await openAssetInNewTab(assetId);
+    } finally {
+      setDownloadingAssetId(null);
+    }
+  };
+
+  const handleBidSubmitted = (caseId) => {
+    setSubmittedCaseIds((prev) => new Set([...prev, caseId]));
+    reloadCases();
+    if (detailsModalCase?.id === caseId) {
+      setDetailsModalCase((prev) =>
+        prev
+          ? {
+              ...prev,
+              bids: [
+                ...(prev.bids || []),
+                { lawyer_profile_id: lawyerProfile?.id, status: 'pending' },
+              ],
+            }
+          : null
+      );
+    }
+  };
+
+  const getCategoryBadgeClass = (category) => {
+    switch (category?.toLowerCase()) {
+      case 'property':
+        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+      case 'criminal':
+        return 'bg-red-500/10 text-red-400 border-red-500/20';
+      case 'family':
+        return 'bg-pink-500/10 text-pink-400 border-pink-500/20';
+      case 'corporate':
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      default:
+        return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+    }
+  };
   const [actionLoading, setActionLoading] = useState(null);
   const [showAddSlot, setShowAddSlot] = useState(false);
-  const [newDate, setNewDate] = useState('');
-  const [newStartTime, setNewStartTime] = useState('10:00 AM');
-  const [newEndTime, setNewEndTime] = useState('11:00 AM');
-  const [addingSlot, setAddingSlot] = useState(false);
 
   // Review Modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -338,35 +492,6 @@ export default function LawyerDashboard() {
       toast(getErrorMessage(err, 'Failed to load receipt screenshot'), 'error');
     } finally {
       setFetchingReceiptId(null);
-    }
-  };
-
-  const handleCreateSlot = async (e) => {
-    e.preventDefault();
-    if (!newDate || !newStartTime || !newEndTime) {
-      toast('Please fill in all date and time fields', 'error');
-      return;
-    }
-    if (newDate < todayIso) {
-      toast('Slots must be in the future or today.', 'error');
-      return;
-    }
-
-    setAddingSlot(true);
-    try {
-      await api.post('/lawyer/schedules', {
-        date: newDate,
-        start_time: newStartTime,
-        end_time: newEndTime,
-      });
-      toast('Availability slot added successfully', 'success');
-      setShowAddSlot(false);
-      setNewDate('');
-      reloadSchedules();
-    } catch (err) {
-      toast(getErrorMessage(err, 'Failed to create schedule slot'), 'error');
-    } finally {
-      setAddingSlot(false);
     }
   };
 
@@ -670,6 +795,7 @@ export default function LawyerDashboard() {
         {/* Tab Switcher */}
         <div className="flex items-center gap-6 border-b border-zinc-800">
           <button
+            id="tab-consultations"
             onClick={() => setActiveTab('consultations')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
               activeTab === 'consultations'
@@ -682,6 +808,46 @@ export default function LawyerDashboard() {
             {pendingRequests.length > 0 && (
               <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">
                 {pendingRequests.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            id="tab-my-bids"
+            onClick={() => setActiveTab('my-bids')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === 'my-bids'
+                ? 'border-blue-500 text-zinc-50'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Gavel className="h-4 w-4" />
+            <span>My Bids</span>
+            {pendingBids.length > 0 && (
+              <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">
+                {pendingBids.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            id="tab-case-board"
+            onClick={() => setActiveTab('cases')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === 'cases'
+                ? 'border-blue-500 text-zinc-50'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Briefcase className="h-4 w-4" />
+            <span>Case Board</span>
+            {isGoldVerified ? (
+              <span className="bg-amber-500/20 text-amber-300 text-[11px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-amber-500/30">
+                <Sparkles className="h-3 w-3 text-amber-400" /> Gold
+              </span>
+            ) : (
+              <span className="bg-zinc-800 text-zinc-400 text-[11px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 border border-zinc-700/50">
+                <Lock className="h-3 w-3 text-zinc-500" /> Upgrade
               </span>
             )}
           </button>
@@ -747,80 +913,11 @@ export default function LawyerDashboard() {
         </div>
 
         {/* Modal: Quick Add Schedule Slot */}
-        {showAddSlot && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <Card className="max-w-md w-full p-6 space-y-5 bg-zinc-900 border-zinc-800">
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-                <h3 className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-blue-500" /> Add Available Consultation Slot
-                </h3>
-                <button
-                  onClick={() => setShowAddSlot(false)}
-                  className="text-zinc-400 hover:text-zinc-50 p-1 rounded-md"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateSlot} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-zinc-300">Date (min = today)</label>
-                  <input
-                    type="date"
-                    required
-                    min={todayIso}
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-300">Start Time</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="10:00 AM"
-                      value={newStartTime}
-                      onChange={(e) => setNewStartTime(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-300">End Time</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="11:00 AM"
-                      value={newEndTime}
-                      onChange={(e) => setNewEndTime(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setShowAddSlot(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    isLoading={addingSlot}
-                    className="bg-blue-600 hover:bg-blue-500 text-white"
-                  >
-                    Create Slot
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          </div>
-        )}
+        <AddSlotModal
+          isOpen={showAddSlot}
+          onClose={() => setShowAddSlot(false)}
+          onSuccess={reloadSchedules}
+        />
 
         {/* Tab Content 1: Consultations */}
         {activeTab === 'consultations' && (
@@ -1044,6 +1141,274 @@ export default function LawyerDashboard() {
           </div>
         )}
 
+        {/* Tab Content: My Bids */}
+        {activeTab === 'my-bids' && (
+          <div className="space-y-8 animate-in fade-in duration-200">
+            {/* Header info bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800">
+              <div>
+                <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2.5">
+                  <Gavel className="h-6 w-6 text-blue-500" />
+                  <span>My Bids & Proposals</span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Track the status of your submitted bids, continue discussions with clients, and launch accepted consultations.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={reloadMyBids}
+                  disabled={myBidsLoading}
+                  className="text-xs border-zinc-700 hover:bg-zinc-800 gap-1.5 h-8.5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${myBidsLoading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setActiveTab('cases')}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs gap-1.5 h-8.5 shadow-md shadow-blue-900/30 font-semibold"
+                >
+                  <Briefcase className="h-3.5 w-3.5" />
+                  <span>Browse Case Board</span>
+                </Button>
+              </div>
+            </div>
+
+            {myBidsLoading && myBids.length === 0 ? (
+              <LoadingState message="Loading your bids and proposals..." />
+            ) : myBidsError && myBids.length === 0 ? (
+              <ErrorState
+                message={getErrorMessage(myBidsError, 'Failed to load bids')}
+                onRetry={reloadMyBids}
+              />
+            ) : (
+              <div className="space-y-10">
+                {/* 1. Active / Pending Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse" />
+                      <h3 className="text-lg font-bold text-zinc-100">Active / Pending</h3>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                        {pendingBids.length}
+                      </span>
+                    </div>
+                    <span className="text-xs text-zinc-500">Under client review</span>
+                  </div>
+
+                  {pendingBids.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 p-8 text-center text-zinc-400 text-sm">
+                      <Clock className="h-8 w-8 text-zinc-600 mx-auto mb-2 opacity-60" />
+                      <p className="font-medium text-zinc-300">No active or pending bids</p>
+                      <p className="text-xs text-zinc-500 mt-1">Submit proposals on open cases from the Case Board.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5">
+                      {pendingBids.map((bid) => (
+                        <div
+                          key={bid.bid_id}
+                          className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/80 transition-all flex flex-col justify-between shadow-sm hover:shadow-md"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2.5">
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${getCategoryBadgeClass(
+                                  bid.category
+                                )}`}
+                              >
+                                {bid.category || 'General'}
+                              </span>
+                              <Badge variant="warning" className="text-[11px] px-2 py-0.5">
+                                Pending
+                              </Badge>
+                            </div>
+
+                            <h4
+                              className="font-bold text-zinc-100 text-base leading-snug line-clamp-2"
+                              title={bid.case_title}
+                            >
+                              {bid.case_title}
+                            </h4>
+
+                            <div className="flex items-center gap-1.5 text-zinc-400 text-xs mt-2.5">
+                              <User className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                              <span className="font-medium text-zinc-300">{bid.client_name || 'Client'}</span>
+                            </div>
+
+                            <div className="mt-3.5 py-2 px-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 flex items-center justify-between text-xs">
+                              <span className="text-zinc-400 font-medium">Proposed Fee:</span>
+                              <span className="font-bold text-emerald-400 text-sm">
+                                {bid.proposed_fee ? `৳${bid.proposed_fee.toLocaleString()}` : 'To be discussed'}
+                              </span>
+                            </div>
+
+                            {bid.pitch && (
+                              <p className="text-xs text-zinc-400/90 italic mt-3 line-clamp-2 bg-zinc-950/40 p-2 rounded border border-zinc-800/40">
+                                "{bid.pitch}"
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="mt-5 pt-3 border-t border-zinc-800/60">
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenBidDiscussion(bid)}
+                              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs gap-1.5 h-8.5 cursor-pointer shadow-md shadow-blue-900/20"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              <span>Discuss Case</span>
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Won (Accepted) Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                      <h3 className="text-lg font-bold text-zinc-100">Won (Accepted)</h3>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                        {wonBids.length}
+                      </span>
+                    </div>
+                    <span className="text-xs text-emerald-400 font-medium">Assigned Cases</span>
+                  </div>
+
+                  {wonBids.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 p-8 text-center text-zinc-400 text-sm">
+                      <CheckCircle2 className="h-8 w-8 text-zinc-600 mx-auto mb-2 opacity-60" />
+                      <p className="font-medium text-zinc-300">No accepted bids yet</p>
+                      <p className="text-xs text-zinc-500 mt-1">When clients accept your bids, they will appear here ready for consultation.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5">
+                      {wonBids.map((bid) => (
+                        <div
+                          key={bid.bid_id}
+                          className="bg-zinc-900/60 border border-emerald-500/30 rounded-xl p-5 hover:border-emerald-500/50 transition-all flex flex-col justify-between shadow-sm hover:shadow-emerald-950/20"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2.5">
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${getCategoryBadgeClass(
+                                  bid.category
+                                )}`}
+                              >
+                                {bid.category || 'General'}
+                              </span>
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" /> Assigned
+                              </span>
+                            </div>
+
+                            <h4
+                              className="font-bold text-zinc-100 text-base leading-snug line-clamp-2"
+                              title={bid.case_title}
+                            >
+                              {bid.case_title}
+                            </h4>
+
+                            <div className="flex items-center gap-1.5 text-zinc-400 text-xs mt-2.5">
+                              <User className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                              <span className="font-medium text-zinc-300">{bid.client_name || 'Client'}</span>
+                            </div>
+
+                            <div className="mt-3 py-1 px-2.5 rounded bg-emerald-950/30 border border-emerald-900/40 text-xs text-emerald-300 font-semibold flex items-center gap-1.5">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                              <span>Status: Assigned to You</span>
+                            </div>
+
+                            <div className="mt-3 py-2 px-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 flex items-center justify-between text-xs">
+                              <span className="text-zinc-400 font-medium">Agreed Fee:</span>
+                              <span className="font-bold text-emerald-400 text-sm">
+                                {bid.proposed_fee ? `৳${bid.proposed_fee.toLocaleString()}` : 'Standard Consultation'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 pt-3 border-t border-zinc-800/60">
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenWonConsultation(bid)}
+                              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs gap-1.5 h-8.5 cursor-pointer shadow-md shadow-emerald-900/30"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              <span>Open Consultation</span>
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Lost / Rejected Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-zinc-500" />
+                      <h3 className="text-lg font-bold text-zinc-400">Lost / Rejected</h3>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-zinc-800 text-zinc-400 border border-zinc-700/60">
+                        {lostBids.length}
+                      </span>
+                    </div>
+                    <span className="text-xs text-zinc-500">Unselected bids</span>
+                  </div>
+
+                  {lostBids.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-800/50 bg-zinc-900/10 p-6 text-center text-zinc-500 text-xs">
+                      No rejected bids.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5">
+                      {lostBids.map((bid) => (
+                        <div
+                          key={bid.bid_id}
+                          className="bg-zinc-900/35 border border-zinc-800/60 rounded-xl p-5 opacity-70 flex flex-col justify-between select-none"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2.5">
+                              <span className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-zinc-700/50 text-zinc-400 bg-zinc-800/40">
+                                {bid.category || 'General'}
+                              </span>
+                              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50">
+                                Rejected
+                              </span>
+                            </div>
+
+                            <h4
+                              className="font-semibold text-zinc-300 text-base leading-snug line-clamp-2"
+                              title={bid.case_title}
+                            >
+                              {bid.case_title}
+                            </h4>
+
+                            <p className="text-xs text-zinc-400 mt-3 italic flex items-center gap-1.5 bg-zinc-950/40 p-2 rounded border border-zinc-800/40">
+                              <X className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                              <span>Client selected another lawyer</span>
+                            </p>
+                          </div>
+
+                          <div className="mt-4 pt-2.5 border-t border-zinc-800/40 text-right">
+                            <span className="text-[11px] text-zinc-500">No actions available</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tab Content 2: Availability */}
         {activeTab === 'availability' && (
           <div className="space-y-8 animate-in fade-in duration-200">
@@ -1056,6 +1421,14 @@ export default function LawyerDashboard() {
                   <p className="text-xs text-zinc-400 mt-1">Configure your open dates and time windows for client consultations. Past slots are automatically hidden.</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Link to="/lawyer/availability">
+                    <Button
+                      variant="secondary"
+                      className="gap-2 text-xs h-8"
+                    >
+                      <Calendar className="h-3.5 w-3.5 text-emerald-400" /> Weekly Grid View
+                    </Button>
+                  </Link>
                   <Button
                     onClick={() => setShowAddSlot(true)}
                     className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm text-xs h-8"
@@ -1644,7 +2017,450 @@ export default function LawyerDashboard() {
             </Card>
           </div>
         )}
+
+        {/* Tab Content: Case Board */}
+        {activeTab === 'cases' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Top Header & Refresh */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
+                  <Briefcase className="h-5 w-5 text-amber-500" /> Open Legal Case Board
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Browse open legal briefs submitted by verified Pro citizens and place competitive bids to represent them.
+                </p>
+              </div>
+
+              {isGoldVerified && (
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+                    <Sparkles className="h-3.5 w-3.5 text-amber-400" /> Gold Verified Access
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={reloadCases}
+                    className="text-xs text-zinc-400 hover:text-zinc-200 gap-1.5"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Check if Locked (non-Gold) */}
+            {!isGoldVerified ? (
+              <div className="space-y-6">
+                {/* Upgrade Callout Banner */}
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-amber-300">
+                      Upgrade to Gold Verified to access the Case Board and win new clients.
+                    </p>
+                    <p className="text-xs text-amber-200/80 mt-1">
+                      Direct case bidding is an exclusive premium feature for Gold Verified advocates who have completed credential verification.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Locked Feature Showcase Card */}
+                <Card className="bg-gradient-to-b from-zinc-900 via-zinc-900/90 to-zinc-950 border-amber-500/20 shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                  <CardContent className="p-8 md:p-12 text-center max-w-2xl mx-auto space-y-6">
+                    <div className="h-16 w-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/10">
+                      <Lock className="h-8 w-8" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <Sparkles className="h-3 w-3" /> Gold Verified Feature
+                      </span>
+                      <h3 className="text-2xl font-bold text-zinc-50">
+                        Case Board Access is Locked
+                      </h3>
+                      <p className="text-sm text-zinc-400 leading-relaxed">
+                        Pro clients post verified litigation, property, and corporate disputes on our Case Board every day. Upgrade your advocate status to Gold Verified to view full case briefs, access evidence attachments, and submit competitive legal bids.
+                      </p>
+                    </div>
+
+                    {/* Value Props */}
+                    <div className="grid sm:grid-cols-3 gap-4 text-left pt-2">
+                      <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-1.5">
+                        <div className="text-amber-400 font-semibold text-xs flex items-center gap-1.5">
+                          <Briefcase className="h-4 w-4" /> Open Case Briefs
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Browse cases in Property, Criminal, Family, and Corporate sectors.
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-1.5">
+                        <div className="text-amber-400 font-semibold text-xs flex items-center gap-1.5">
+                          <Gavel className="h-4 w-4" /> Direct Bidding
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Propose your legal fee and strategic approach directly to clients.
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-1.5">
+                        <div className="text-amber-400 font-semibold text-xs flex items-center gap-1.5">
+                          <ShieldCheck className="h-4 w-4" /> Escrow Bookings
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Accepted bids automatically convert to secure platform bookings.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* CTAs */}
+                    <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+                      <Link to="/pricing">
+                        <Button className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-zinc-950 font-bold px-6 py-2.5 shadow-lg shadow-amber-500/20 gap-2">
+                          <Sparkles className="h-4 w-4 text-zinc-950" />
+                          <span>Upgrade to Gold Verified (৳2,500/yr)</span>
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setActiveTab('profile')}
+                        className="text-zinc-300 hover:text-zinc-100 gap-2"
+                      >
+                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                        <span>View Verification Docs</span>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : casesLoading ? (
+              <div className="py-12">
+                <LoadingState message="Loading open cases from the Case Board..." />
+              </div>
+            ) : casesError ? (
+              <ErrorState
+                error={casesError}
+                onRetry={reloadCases}
+              />
+            ) : (
+              <div className="space-y-6">
+                {/* Category Filter Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+                  {['All', 'Property', 'Criminal', 'Family', 'Corporate', 'Other'].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCaseCategory(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                        selectedCaseCategory === cat
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800 hover:border-zinc-700'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Cases Grid */}
+                {(() => {
+                  const casesList = asList(casesData, 'cases');
+                  const filteredCases = casesList.filter((c) => {
+                    if (selectedCaseCategory === 'All') return true;
+                    return c.category?.toLowerCase() === selectedCaseCategory.toLowerCase();
+                  });
+
+                  if (filteredCases.length === 0) {
+                    return (
+                      <EmptyState
+                        icon={Briefcase}
+                        title="No open cases available"
+                        description={
+                          selectedCaseCategory === 'All'
+                            ? 'There are currently no open cases waiting for bids. Please check back later.'
+                            : `No open cases found in the "${selectedCaseCategory}" category.`
+                        }
+                        actionLabel="Refresh Board"
+                        onAction={reloadCases}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredCases.map((caseItem) => {
+                        const hasBid = hasLawyerBidOnCase(caseItem);
+                        const attachmentCount = caseItem.attachment_asset_ids?.length || 0;
+                        const shortDescription = caseItem.description
+                          ? caseItem.description.length > 100
+                            ? `${caseItem.description.slice(0, 100)}...`
+                            : caseItem.description
+                          : 'No description provided.';
+
+                        return (
+                          <Card
+                            key={caseItem.id}
+                            onClick={() => setDetailsModalCase(caseItem)}
+                            className="bg-zinc-900 border-zinc-800 hover:border-zinc-700 transition-all hover:shadow-lg cursor-pointer flex flex-col justify-between group"
+                          >
+                            <CardContent className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                              <div className="space-y-3">
+                                {/* Top Category & Status */}
+                                <div className="flex items-center justify-between gap-2">
+                                  <span
+                                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getCategoryBadgeClass(
+                                      caseItem.category
+                                    )}`}
+                                  >
+                                    {caseItem.category || 'General'}
+                                  </span>
+                                  {hasBid ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                      <CheckCircle2 className="h-3 w-3" /> Bid Placed
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                      Open
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Title */}
+                                <div>
+                                  <h3 className="text-base font-bold text-zinc-50 group-hover:text-blue-400 transition-colors line-clamp-2">
+                                    {caseItem.title}
+                                  </h3>
+                                  <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1.5">
+                                    <User className="h-3.5 w-3.5 text-zinc-500" />
+                                    <span>{caseItem.user_name || 'Pro Client'}</span>
+                                  </p>
+                                </div>
+
+                                {/* Short Preview */}
+                                <p className="text-xs text-zinc-300 leading-relaxed line-clamp-3">
+                                  {shortDescription}
+                                </p>
+                              </div>
+
+                              {/* Footer Meta & Action */}
+                              <div className="pt-4 border-t border-zinc-800/80 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 text-xs text-zinc-400">
+                                  {attachmentCount > 0 ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-blue-400 font-medium"
+                                      title={`${attachmentCount} attachment(s)`}
+                                    >
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                      <span>{attachmentCount} files</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-zinc-500 text-[11px]">
+                                      <Paperclip className="h-3 w-3" />
+                                      <span>0 files</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div>
+                                  {hasBid ? (
+                                    <Button
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDiscussionCase(caseItem);
+                                      }}
+                                      className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold gap-1.5 h-8 px-3 cursor-pointer"
+                                    >
+                                      <MessageSquare className="h-3.5 w-3.5" />
+                                      <span>Discuss with Client</span>
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setBidModalCase(caseItem);
+                                      }}
+                                      className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold gap-1.5 shadow-sm h-8 px-3"
+                                    >
+                                      <Gavel className="h-3.5 w-3.5" />
+                                      <span>Submit Bid</span>
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Modal: Case Details Expansion */}
+      {detailsModalCase && (
+        <Modal
+          isOpen={Boolean(detailsModalCase)}
+          onClose={() => setDetailsModalCase(null)}
+          title={detailsModalCase.title}
+          description={`Client: ${detailsModalCase.user_name || 'Pro Client'} • Category: ${detailsModalCase.category}`}
+          maxWidth="max-w-2xl"
+        >
+          <div className="space-y-6">
+            {/* Category & Status Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-zinc-950 border border-zinc-800">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getCategoryBadgeClass(
+                    detailsModalCase.category
+                  )}`}
+                >
+                  {detailsModalCase.category}
+                </span>
+                <span className="text-xs text-zinc-400 font-mono">
+                  Posted on {detailsModalCase.created_at ? new Date(detailsModalCase.created_at).toLocaleDateString() : 'Recently'}
+                </span>
+              </div>
+              <div>
+                {hasLawyerBidOnCase(detailsModalCase) ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Bid Submitted
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/30">
+                    Open for Bids
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Full Description */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                Case Brief & Description
+              </h4>
+              <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
+                {detailsModalCase.description || 'No detailed brief provided.'}
+              </div>
+            </div>
+
+            {/* Evidence Attachments */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center justify-between">
+                <span>Attached Evidence Files</span>
+                <span className="font-mono text-zinc-500">
+                  {detailsModalCase.attachment_asset_ids?.length || 0} file(s)
+                </span>
+              </h4>
+
+              {(!detailsModalCase.attachment_asset_ids || detailsModalCase.attachment_asset_ids.length === 0) ? (
+                <div className="p-4 rounded-xl bg-zinc-950/60 border border-dashed border-zinc-800 text-xs text-zinc-500 text-center">
+                  No evidence documents attached to this case.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {detailsModalCase.attachment_asset_ids.map((assetId, index) => (
+                    <div
+                      key={assetId}
+                      className="flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-zinc-200 truncate">
+                            Case Evidence Document #{index + 1}
+                          </p>
+                          <p className="text-[10px] text-zinc-500 font-mono truncate">
+                            ID: {assetId}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleOpenAsset(assetId)}
+                        disabled={downloadingAssetId === assetId}
+                        isLoading={downloadingAssetId === assetId}
+                        className="text-xs gap-1.5 h-8 px-3 shrink-0"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-zinc-400" />
+                        <span>View File</span>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+              <Button
+                variant="ghost"
+                onClick={() => setDetailsModalCase(null)}
+                className="text-zinc-400 hover:text-zinc-200 text-xs"
+              >
+                Close
+              </Button>
+              {hasLawyerBidOnCase(detailsModalCase) ? (
+                <Button
+                  onClick={() => {
+                    const caseToDiscuss = detailsModalCase;
+                    setDetailsModalCase(null);
+                    setDiscussionCase(caseToDiscuss);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold gap-1.5 shadow-sm"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  <span>Discuss with Client</span>
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => {
+                    const caseToBid = detailsModalCase;
+                    setDetailsModalCase(null);
+                    setBidModalCase(caseToBid);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold gap-1.5 shadow-sm"
+                >
+                  <Gavel className="h-3.5 w-3.5" />
+                  <span>Submit Bid</span>
+                </Button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Submit Bid */}
+      {bidModalCase && (
+        <SubmitBidModal
+          isOpen={Boolean(bidModalCase)}
+          onClose={() => setBidModalCase(null)}
+          caseItem={bidModalCase}
+          onBidSubmitted={handleBidSubmitted}
+        />
+      )}
+
+      {/* Modal: Case Discussion */}
+      {discussionCase && (
+        <CaseDiscussionModal
+          isOpen={Boolean(discussionCase)}
+          onClose={() => setDiscussionCase(null)}
+          caseItem={discussionCase}
+          bid={discussionCase.my_bid}
+          currentUser={user}
+          isLawyerView={true}
+        />
+      )}
 
       {/* Review Modal */}
       <ReviewModal
@@ -1659,6 +2475,20 @@ export default function LawyerDashboard() {
           reloadReq();
         }}
       />
+
+      {/* Modal: Bids Consultation Thread */}
+      {isBidsConsultationOpen && bidsConsultationBooking && (
+        <BookingThreadModal
+          isOpen={isBidsConsultationOpen}
+          onClose={() => {
+            setIsBidsConsultationOpen(false);
+            setBidsConsultationBooking(null);
+          }}
+          booking={bidsConsultationBooking}
+          currentUser={user}
+          isLawyerView={true}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, Plus, Gavel, Calendar, Clock, CheckCircle2, ChevronRight, FileText, ArrowRight, ShieldCheck, Sparkles, Filter } from 'lucide-react';
+import { Briefcase, Plus, Gavel, Calendar, Clock, CheckCircle2, ChevronRight, FileText, ArrowRight, ShieldCheck, Sparkles, Filter, CreditCard, MessageSquare, Video } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
@@ -9,6 +9,17 @@ import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import PostCaseModal from '../../components/ui/PostCaseModal';
 import CaseBidsList from '../../components/ui/CaseBidsList';
 import ProPaywallModal from '../../components/ui/ProPaywallModal';
+import CompletePaymentModal from '../../components/ui/CompletePaymentModal';
+import CaseDiscussionModal from '../../components/ui/CaseDiscussionModal';
+import {
+  isUpcoming,
+  isPast,
+  isCancelled,
+  formatSlot,
+  chatAllowed,
+  isCaseBoardBooking,
+  getBookingDateStr,
+} from '../../utils/bookings';
 import useApi from '../../lib/useApi';
 import useAuthStore from '../../store/useAuthStore';
 import { asList } from '../../lib/api';
@@ -25,6 +36,33 @@ export default function MyCasesPage() {
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [isBidsModalOpen, setIsBidsModalOpen] = useState(false);
+
+  // In-place payment and discussion states (kills the maze)
+  const [paymentBooking, setPaymentBooking] = useState(null);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [discussionCase, setDiscussionCase] = useState(null);
+  const [discussionBid, setDiscussionBid] = useState(null);
+  const [isDiscussionOpen, setIsDiscussionOpen] = useState(false);
+
+  const handleOpenDiscussion = (c, b) => {
+    setDiscussionCase(c);
+    setDiscussionBid(b || (c.bids || []).find((x) => x.status === 'accepted') || { id: c.bid_id, lawyer_name: c.booking_lawyer_name || 'Advocate' });
+    setIsDiscussionOpen(true);
+  };
+
+  const handleOpenPayment = (c, b) => {
+    const fee = c.booking_fee ?? b?.proposed_fee ?? 2000;
+    const lName = c.booking_lawyer_name || b?.lawyer_name || 'Advocate';
+    const lId = c.booking_lawyer_id || b?.lawyer_profile_id;
+    setPaymentBooking({
+      id: c.booking_id,
+      fee: fee,
+      lawyer_name: lName,
+      lawyer_id: lId,
+      status: c.booking_status || 'awaiting_payment',
+    });
+    setIsPaymentOpen(true);
+  };
 
   const isPro = Boolean(
     user?.is_pro ||
@@ -278,14 +316,65 @@ export default function MyCasesPage() {
                     </div>
 
                     {/* Right: Action Buttons */}
-                    <div className="flex items-center gap-3 self-end sm:self-auto">
+                    <div className="flex flex-wrap items-center gap-2.5 self-end sm:self-auto">
                       {isAssigned && (
-                        <Link to="/client/bookings">
-                          <Button size="sm" variant="secondary" className="gap-1.5">
-                            <span>View Consultation</span>
-                            <ArrowRight className="h-3.5 w-3.5" />
-                          </Button>
-                        </Link>
+                        <>
+                          {caseItem.booking_status === 'awaiting_payment' ? (
+                            <>
+                              <Button
+                                size="sm"
+                                className="bg-amber-600 hover:bg-amber-500 text-white gap-1.5 font-semibold shadow-lg shadow-amber-600/20"
+                                onClick={() => handleOpenPayment(caseItem, acceptedBid)}
+                              >
+                                <CreditCard className="h-3.5 w-3.5" /> Pay Now ৳{caseItem.booking_fee ?? acceptedBid?.proposed_fee ?? 2000}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="gap-1.5 text-zinc-300 hover:text-white"
+                                onClick={() => handleOpenDiscussion(caseItem, acceptedBid)}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5 text-blue-400" /> Discuss Case
+                              </Button>
+                            </>
+                          ) : caseItem.booking_status === 'payment_submitted' ? (
+                            <>
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                <Clock className="h-3.5 w-3.5" />
+                                <span>Payment Under Review</span>
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="gap-1.5 text-zinc-300 hover:text-white"
+                                onClick={() => handleOpenDiscussion(caseItem, acceptedBid)}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5 text-blue-400" /> Discuss Case
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 font-semibold shadow-sm"
+                                onClick={() => handleOpenDiscussion(caseItem, acceptedBid)}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" /> Open Thread
+                              </Button>
+
+                              {caseItem.booking_meeting_link && (
+                                <a
+                                  href={caseItem.booking_meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                                >
+                                  <Video className="h-3.5 w-3.5" /> Join Meeting
+                                </a>
+                              )}
+                            </>
+                          )}
+                        </>
                       )}
 
                       <Button
@@ -343,6 +432,33 @@ export default function MyCasesPage() {
           setIsPaywallOpen(false);
           setIsPostModalOpen(true);
         }}
+      />
+
+      {/* Complete Payment Modal */}
+      <CompletePaymentModal
+        isOpen={isPaymentOpen}
+        onClose={() => {
+          setIsPaymentOpen(false);
+          setPaymentBooking(null);
+        }}
+        booking={paymentBooking}
+        onPaymentSubmitted={() => {
+          reload();
+        }}
+      />
+
+      {/* Case Discussion Modal */}
+      <CaseDiscussionModal
+        isOpen={isDiscussionOpen}
+        onClose={() => {
+          setIsDiscussionOpen(false);
+          setDiscussionCase(null);
+          setDiscussionBid(null);
+        }}
+        caseItem={discussionCase}
+        bid={discussionBid}
+        currentUser={user}
+        isLawyerView={false}
       />
     </div>
   );
