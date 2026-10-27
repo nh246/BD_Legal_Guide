@@ -41,7 +41,7 @@ export default function Navbar() {
     }
   }, [token]);
 
-  // Polling every 30 seconds and window focus listener
+  // Polling every 10 seconds and window focus listener
   useEffect(() => {
     if (!token) {
       setNotifications([]);
@@ -51,7 +51,7 @@ export default function Navbar() {
 
     fetchNotifications();
 
-    const intervalId = setInterval(fetchNotifications, 30000);
+    const intervalId = setInterval(fetchNotifications, 10000);
 
     const handleFocus = () => {
       fetchNotifications();
@@ -62,7 +62,7 @@ export default function Navbar() {
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [token, fetchNotifications]);
+  }, [token, user?.id, user?.role, fetchNotifications]);
 
   // Close dropdown if user clicks outside
   useEffect(() => {
@@ -165,7 +165,10 @@ export default function Navbar() {
         <div className="flex justify-between items-center h-16">
           
           {/* Left: Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
+          <Link
+            to={user && (user.role === 'admin' || user.role === 'moderator') ? '/admin' : '/'}
+            className="flex items-center gap-2 group"
+          >
             <Scale className="h-6 w-6 text-blue-500 transition-transform group-hover:scale-105" />
             <span className="font-bold text-lg text-zinc-50 tracking-tight">
               BD <span className="bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent">LegalAI</span>
@@ -198,7 +201,7 @@ export default function Navbar() {
               </Link>
             )}
 
-            {(!user || user.role === 'user' || user.role === 'admin') && (
+            {(!user || user.role === 'user') && (
               <>
                 <Link
                   id="nav-link-chat"
@@ -276,7 +279,13 @@ export default function Navbar() {
 
             <Link
               id="nav-link-pricing"
-              to={user?.role === 'lawyer' ? '/pricing?role=lawyer' : '/pricing?role=user'}
+              to={
+                user?.role === 'admin' || user?.role === 'moderator'
+                  ? '/pricing'
+                  : user?.role === 'lawyer'
+                  ? '/pricing?role=lawyer'
+                  : '/pricing?role=user'
+              }
               className={getLinkClasses(isPricing)}
             >
               <span>Pricing</span>
@@ -318,7 +327,7 @@ export default function Navbar() {
                   >
                     <Bell className="h-5 w-5" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center shadow-md shadow-red-500/40">
+                      <span id="nav-notifications-badge" className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center shadow-md shadow-red-500/40">
                         {unreadCount > 99 ? '99+' : unreadCount}
                       </span>
                     )}
@@ -437,7 +446,7 @@ export default function Navbar() {
             </Link>
           )}
 
-          {(!user || user.role === 'user' || user.role === 'admin') && (
+          {(!user || user.role === 'user') && (
             <>
               <Link
                 to="/client/chat"
@@ -500,7 +509,13 @@ export default function Navbar() {
           )}
 
           <Link
-            to={user?.role === 'lawyer' ? '/pricing?role=lawyer' : '/pricing?role=user'}
+            to={
+              user?.role === 'admin' || user?.role === 'moderator'
+                ? '/pricing'
+                : user?.role === 'lawyer'
+                ? '/pricing?role=lawyer'
+                : '/pricing?role=user'
+            }
             className={`w-full ${getLinkClasses(isPricing)}`}
             onClick={() => setMobileMenuOpen(false)}
           >

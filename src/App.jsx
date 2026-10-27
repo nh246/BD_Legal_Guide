@@ -35,9 +35,8 @@ import AdminOverview from './pages/admin/AdminOverview';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminModerators from './pages/admin/AdminModerators';
 import AdminLawyers from './pages/admin/AdminLawyers';
-import AdminFirms from './pages/admin/AdminFirms';
 import AdminQueries from './pages/admin/AdminQueries';
-import AdminLlmConfig from './pages/admin/AdminLlmConfig';
+import AdminLLMConfig from './pages/admin/AdminLLMConfig';
 import AdminPayments from './pages/admin/AdminPayments';
 import AdminAuditLogs from './pages/admin/AdminAuditLogs';
 
@@ -120,9 +119,8 @@ function App() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="moderators" element={<AdminModerators />} />
             <Route path="lawyers" element={<AdminLawyers />} />
-            <Route path="firms" element={<AdminFirms />} />
             <Route path="queries" element={<AdminQueries />} />
-            <Route path="llm-config" element={<AdminLlmConfig />} />
+            <Route path="llm-config" element={<AdminLLMConfig />} />
             <Route path="payments" element={<AdminPayments />} />
             <Route path="audit-logs" element={<AdminAuditLogs />} />
           </Route>

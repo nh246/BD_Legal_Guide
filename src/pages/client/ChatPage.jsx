@@ -845,6 +845,9 @@ export default function ChatPage() {
               </button>
             </div>
           </div>
+          <p className="text-center text-xs text-zinc-500 mt-2">
+            Your conversations are private. Staff content review requires logged justification.
+          </p>
         </div>
       </div>
 

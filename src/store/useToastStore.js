@@ -23,5 +23,9 @@ export const useToastStore = create((set, get) => ({
 }));
 
 export const toast = (message, variant) => useToastStore.getState().show(message, variant);
+toast.success = (msg) => useToastStore.getState().show(msg, 'success');
+toast.error = (msg) => useToastStore.getState().show(msg, 'error');
+toast.info = (msg) => useToastStore.getState().show(msg, 'info');
+toast.warning = (msg) => useToastStore.getState().show(msg, 'warning');
 
 export default useToastStore;

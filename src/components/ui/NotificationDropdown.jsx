@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  Scale,
+  AlertCircle,
 } from 'lucide-react';
 
 function formatRelativeTime(dateVal) {
@@ -32,6 +34,12 @@ function formatRelativeTime(dateVal) {
 
 function getNotificationIcon(type) {
   switch (type) {
+    case 'lawyer_verification_submitted':
+      return <Scale className="h-4 w-4 text-amber-400" />;
+    case 'verification_fee_paid':
+      return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
+    case 'refund_flagged':
+      return <AlertCircle className="h-4 w-4 text-red-400" />;
     case 'booking_confirmed':
       return <Calendar className="h-4 w-4 text-emerald-400" />;
     case 'payment_submitted':
