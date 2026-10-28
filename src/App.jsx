@@ -36,7 +36,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminModerators from './pages/admin/AdminModerators';
 import AdminLawyers from './pages/admin/AdminLawyers';
 import AdminQueries from './pages/admin/AdminQueries';
-import AdminLLMConfig from './pages/admin/AdminLLMConfig';
+import AdminLLMConfig from './pages/admin/AdminLlmConfig';
 import AdminPayments from './pages/admin/AdminPayments';
 import AdminAuditLogs from './pages/admin/AdminAuditLogs';
 
