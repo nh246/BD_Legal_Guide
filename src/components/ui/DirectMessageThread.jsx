@@ -17,29 +17,8 @@ import { toast } from '../../store/useToastStore';
 import { LoadingState, ErrorState } from './PageStates';
 import MeetingControls from './MeetingControls';
 
-// In-memory cache for asset blob URLs and metadata across components
-const assetCache = new Map();
-
-/**
- * Helper to fetch asset file blob and open in a new tab.
- */
-export async function openAssetInNewTab(assetId) {
-  try {
-    const cached = assetCache.get(assetId);
-    if (cached?.url) {
-      window.open(cached.url, '_blank');
-      return;
-    }
-    const res = await api.get(`/assets/${assetId}/file`, { responseType: 'blob' });
-    const mime = res.headers['content-type'] || res.data?.type || 'application/octet-stream';
-    const blob = new Blob([res.data], { type: mime });
-    const url = URL.createObjectURL(blob);
-    assetCache.set(assetId, { url, blob, mime });
-    window.open(url, '_blank');
-  } catch (err) {
-    toast('Failed to load attachment file', 'error');
-  }
-}
+import { openAssetInNewTab, assetCache } from '../../utils/assets';
+export { openAssetInNewTab };
 
 /**
  * Attachment preview inside a chat bubble (image thumbnail or document badge).
@@ -377,7 +356,7 @@ export default function DirectMessageThread({
               ? isLawyerView
                 ? 'You (Advocate)'
                 : 'You'
-              : recipientName;
+              : (msg.sender?.full_name || msg.sender_name || recipientName || 'Unavailable user');
 
             const messageAttachments = Array.isArray(msg.attachments) ? msg.attachments : [];
 

@@ -93,7 +93,7 @@ export default function AdminOverview() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-zinc-800/80">
           <div>
             <h1 className="text-3xl font-extrabold text-zinc-50 tracking-tight flex items-center gap-3">
-              <span>Admin Dashboard</span>
+              <span>Legal Bridge Admin</span>
               <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 tracking-normal">
                 Live Metrics
               </span>

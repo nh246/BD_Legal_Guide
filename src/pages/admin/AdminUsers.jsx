@@ -738,7 +738,7 @@ export default function AdminUsers() {
         isOpen={Boolean(grantModalUser)}
         onClose={() => setGrantModalUser(null)}
         title="Grant Pro Subscription"
-        description={`Upgrade ${grantModalUser?.full_name || grantModalUser?.email || 'user'} to BD Legal Guide Pro.`}
+        description={`Upgrade ${grantModalUser?.full_name || grantModalUser?.email || 'user'} to Legal Bridge Pro.`}
       >
         <form onSubmit={handleGrantPlan} className="space-y-4">
           <div className="space-y-2">

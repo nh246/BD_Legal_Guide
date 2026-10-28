@@ -30,14 +30,22 @@ import {
   Paperclip,
   Sparkles,
   AlertCircle,
+  Loader2,
+  Phone,
+  MapPin,
+  Award,
+  CreditCard,
 } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
+import SecurityCard from '../../components/ui/SecurityCard';
 import AddSlotModal from '../../components/ui/AddSlotModal';
+import AvailabilityGrid from '../../components/ui/AvailabilityGrid';
 import SubmitBidModal from '../../components/ui/SubmitBidModal';
 import DirectMessageThread, { openAssetInNewTab } from '../../components/ui/DirectMessageThread';
+import { assetCache } from '../../utils/assets';
 import MeetingControls from '../../components/ui/MeetingControls';
 import ReviewModal from '../../components/ui/ReviewModal';
 import CaseDiscussionModal from '../../components/ui/CaseDiscussionModal';
@@ -48,6 +56,99 @@ import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
 import { toast } from '../../store/useToastStore';
+
+function EvidenceFileItem({ assetId, index, onOpen, isOpening }) {
+  const [meta, setMeta] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!assetId) {
+      setLoading(false);
+      return;
+    }
+
+    const cached = assetCache.get(assetId);
+    if (cached) {
+      const sizeBytes = cached.size || 0;
+      const sizeStr = sizeBytes < 1024 * 1024
+        ? `${(sizeBytes / 1024).toFixed(1)} KB`
+        : `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+      setMeta({
+        filename: cached.filename || `Evidence Document #${index + 1}`,
+        sizeStr,
+      });
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    api
+      .get(`/assets/${assetId}/file`, { responseType: 'blob' })
+      .then((res) => {
+        if (!active) return;
+        const mime = res.headers['content-type'] || res.data?.type || '';
+        let filename = `Evidence Document #${index + 1}`;
+        const disp = res.headers['content-disposition'] || '';
+        const match = disp.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          filename = match[1];
+        } else if (mime.includes('pdf')) {
+          filename = `Evidence_${index + 1}.pdf`;
+        }
+        const sizeBytes = res.data?.size || 0;
+        const sizeStr = sizeBytes < 1024 * 1024
+          ? `${(sizeBytes / 1024).toFixed(1)} KB`
+          : `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+        const blobUrl = URL.createObjectURL(res.data);
+        assetCache.set(assetId, { url: blobUrl, blob: res.data, mime, filename, size: sizeBytes });
+        setMeta({ filename, sizeStr });
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMeta({
+          filename: `Evidence Document #${index + 1}`,
+          sizeStr: 'Document',
+          error: true,
+        });
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [assetId, index]);
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="h-9 w-9 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-zinc-200 truncate">
+            {meta?.filename || `Evidence Document #${index + 1}`}
+          </p>
+          <p className="text-[10px] text-zinc-400 font-mono truncate">
+            {loading ? 'Loading file...' : (meta?.sizeStr || 'Document')}
+          </p>
+        </div>
+      </div>
+
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => onOpen(assetId)}
+        disabled={isOpening}
+        isLoading={isOpening}
+        className="text-xs gap-1.5 h-8 px-3 shrink-0 cursor-pointer"
+      >
+        <Eye className="h-3.5 w-3.5 text-zinc-400" />
+        <span>View File</span>
+      </Button>
+    </div>
+  );
+}
 
 export default function LawyerDashboard() {
   const { user } = useAuthStore();
@@ -65,6 +166,10 @@ export default function LawyerDashboard() {
     user?.role === 'admin'
   );
 
+  const isUnverified = Boolean(
+    user?.role === 'lawyer' && !profileLoading && lawyerProfile?.verification_status !== 'approved'
+  );
+
   const [activeTab, setActiveTab] = useState(() => {
     const tabParam = searchParams.get('tab');
     if (tabParam === 'case-board' || tabParam === 'cases') return 'cases';
@@ -79,8 +184,24 @@ export default function LawyerDashboard() {
       setActiveTab('cases');
     } else if (tabParam === 'my-bids' || tabParam === 'bids') {
       setActiveTab('my-bids');
+    } else if (tabParam === 'profile') {
+      setActiveTab('profile');
+    } else if (tabParam === 'availability') {
+      setActiveTab('availability');
+    } else if (tabParam === 'inbox') {
+      setActiveTab('inbox');
+    } else if (tabParam === 'meetings') {
+      setActiveTab('meetings');
+    } else if (tabParam === 'consultations') {
+      setActiveTab('consultations');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!profileLoading && isUnverified && ['consultations', 'cases', 'availability', 'my-bids'].includes(activeTab)) {
+      setActiveTab('profile');
+    }
+  }, [profileLoading, isUnverified, activeTab]);
 
   // Lawyer Bids tracking states
   const {
@@ -205,6 +326,9 @@ export default function LawyerDashboard() {
   };
   const [actionLoading, setActionLoading] = useState(null);
   const [showAddSlot, setShowAddSlot] = useState(false);
+  const [modalDate, setModalDate] = useState('');
+  const [modalStartTime, setModalStartTime] = useState('09:00');
+  const [modalDuration, setModalDuration] = useState(30);
 
   // Review Modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -216,6 +340,65 @@ export default function LawyerDashboard() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState(null);
+
+  // Profile form & verification checklist states
+  const [profileFullName, setProfileFullName] = useState('');
+  const [profileBio, setProfileBio] = useState('');
+  const [profileBarCouncilId, setProfileBarCouncilId] = useState('');
+  const [profileDistrict, setProfileDistrict] = useState('Dhaka');
+  const [profileSpecialization, setProfileSpecialization] = useState('Civil Litigation');
+  const [profileYearsExp, setProfileYearsExp] = useState(5);
+  const [profileHourlyRate, setProfileHourlyRate] = useState(1500);
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileBkash, setProfileBkash] = useState('');
+  const [profileBkashType, setProfileBkashType] = useState('Personal');
+  const [profileNagad, setProfileNagad] = useState('');
+  const [profileNagadType, setProfileNagadType] = useState('Personal');
+  const [profilePaymentInstructions, setProfilePaymentInstructions] = useState('');
+  const [uploadingSlot, setUploadingSlot] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSubmittingVerification, setIsSubmittingVerification] = useState(false);
+
+  const slotNidRef = useRef(null);
+  const slotBarCouncilRef = useRef(null);
+  const slotPracticingLicenseRef = useRef(null);
+  const slotRefs = {
+    nid: slotNidRef,
+    bar_council_cert: slotBarCouncilRef,
+    practicing_license: slotPracticingLicenseRef,
+  };
+
+  useEffect(() => {
+    if (lawyerProfile) {
+      setProfileFullName(lawyerProfile.name || lawyerProfile.full_name || user?.full_name || '');
+      setProfileBio(lawyerProfile.bio || lawyerProfile.description || '');
+      setProfileBarCouncilId(lawyerProfile.bar_council_id || lawyerProfile.bar_council_no || '');
+      setProfileDistrict(lawyerProfile.district || 'Dhaka');
+      setProfileSpecialization(lawyerProfile.specialization || 'Civil Litigation');
+      setProfileYearsExp(typeof lawyerProfile.years_exp === 'number' ? lawyerProfile.years_exp : 5);
+      setProfileHourlyRate(typeof lawyerProfile.hourly_rate === 'number' ? lawyerProfile.hourly_rate : 1500);
+      setProfilePhone(lawyerProfile.phone || user?.phone || '');
+      setProfilePaymentInstructions(lawyerProfile.payment_instructions || '');
+      if (lawyerProfile.meeting_provider) {
+        setMeetingProvider(lawyerProfile.meeting_provider);
+      }
+      if (lawyerProfile.meeting_link) {
+        setMeetingLink(lawyerProfile.meeting_link);
+      }
+      if (Array.isArray(lawyerProfile.payment_methods)) {
+        const bkash = lawyerProfile.payment_methods.find((p) => (p.method || '').toLowerCase() === 'bkash');
+        if (bkash) {
+          setProfileBkash(bkash.number || bkash.account_number || '');
+          if (bkash.type) setProfileBkashType(bkash.type);
+        }
+        const nagad = lawyerProfile.payment_methods.find((p) => (p.method || '').toLowerCase() === 'nagad');
+        if (nagad) {
+          setProfileNagad(nagad.number || nagad.account_number || '');
+          if (nagad.type) setProfileNagadType(nagad.type);
+        }
+      }
+    }
+  }, [lawyerProfile, user]);
 
   // Direct messaging states
   const [selectedCitizen, setSelectedCitizen] = useState(null);
@@ -303,23 +486,27 @@ export default function LawyerDashboard() {
 
   const formatDateEnGB = (dateVal) => {
     if (!dateVal) return '';
-    if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
-      const [y, m, d] = dateVal.slice(0, 10).split('-').map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+    try {
+      if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
+        const [y, m, d] = dateVal.slice(0, 10).split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return String(dateVal);
+      return d.toLocaleDateString('en-GB', {
         weekday: 'short',
         day: '2-digit',
         month: 'short',
         year: 'numeric',
       });
+    } catch {
+      return String(dateVal || '');
     }
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return String(dateVal);
-    return d.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
   };
 
   const todayIso = new Date().toISOString().split('T')[0];
@@ -609,11 +796,123 @@ export default function LawyerDashboard() {
     try {
       await api.delete(`/profile/assets/${assetId}`);
       toast('Document deleted', 'success');
-      reloadAssets();
+      await Promise.all([reloadAssets(), reloadLawyerProfile()]);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to delete document'), 'error');
     } finally {
       setDeletingAssetId(null);
+    }
+  };
+
+  const handleSlotUpload = async (slotKey, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validExts = ['pdf', 'png', 'jpg', 'jpeg'];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!validExts.includes(ext)) {
+      toast('Invalid file type. Allowed: PDF, PNG, JPG', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast('Document exceeds maximum size limit of 2 MB', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingSlot(slotKey);
+    const slotNames = {
+      nid: 'National ID (NID)',
+      bar_council_cert: 'Bar Council Certificate',
+      practicing_license: 'Practicing License',
+    };
+    toast(`Uploading ${slotNames[slotKey] || 'document'}...`, 'info');
+
+    const formData = new FormData();
+    formData.append('kind', 'verification');
+    formData.append('slot', slotKey);
+    formData.append('file', file);
+
+    try {
+      await api.post('/profile/assets', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast(`${slotNames[slotKey] || 'Document'} uploaded successfully`, 'success');
+      await Promise.all([reloadAssets(), reloadLawyerProfile()]);
+    } catch (err) {
+      const msg = err.response?.data?.message || getErrorMessage(err, 'Failed to upload document');
+      toast(msg, 'error');
+    } finally {
+      setUploadingSlot(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleSubmitVerification = async () => {
+    const checklist = lawyerProfile?.verification_checklist || {};
+    if (!checklist.nid || !checklist.bar_council_cert || !checklist.practicing_license) {
+      toast('Please upload all 3 documents before submitting for review.', 'error');
+      return;
+    }
+
+    setIsSubmittingVerification(true);
+    try {
+      await api.post('/lawyer/verification/submit');
+      toast('Verification submitted! Platform administrators have been notified.', 'success');
+      await reloadLawyerProfile();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to submit verification request'), 'error');
+    } finally {
+      setIsSubmittingVerification(false);
+    }
+  };
+
+  const handleSaveProfile = async (e) => {
+    e?.preventDefault?.();
+    setIsSavingProfile(true);
+    try {
+      const paymentMethodsList = [];
+      if (profileBkash.trim()) {
+        paymentMethodsList.push({
+          method: 'bKash',
+          number: profileBkash.trim(),
+          type: profileBkashType,
+        });
+      }
+      if (profileNagad.trim()) {
+        paymentMethodsList.push({
+          method: 'Nagad',
+          number: profileNagad.trim(),
+          type: profileNagadType,
+        });
+      }
+
+      const payload = {
+        name: profileFullName.trim() || undefined,
+        full_name: profileFullName.trim() || undefined,
+        bio: profileBio.trim() || undefined,
+        description: profileBio.trim() || undefined,
+        bar_council_id: profileBarCouncilId.trim() || undefined,
+        district: profileDistrict.trim() || undefined,
+        specialization: profileSpecialization.trim() || undefined,
+        years_exp: Number(profileYearsExp) || 0,
+        hourly_rate: Number(profileHourlyRate) || 0,
+        phone: profilePhone.trim() || undefined,
+        payment_methods: paymentMethodsList,
+        payment_instructions: profilePaymentInstructions.trim() || undefined,
+        meeting_provider: meetingProvider.trim() || undefined,
+        meeting_link: meetingLink.trim() || undefined,
+      };
+
+      await api.put('/lawyer/me', payload);
+      toast('Profile information updated successfully!', 'success');
+      await reloadLawyerProfile();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update profile'), 'error');
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -672,8 +971,16 @@ export default function LawyerDashboard() {
     }
   };
 
-  const loading = reqLoading && schedLoading;
-  const error = reqError || schedError;
+  const isUnverifiedErr = (err) => {
+    return (
+      err?.response?.data?.error === 'unverified_lawyer' ||
+      err?.response?.status === 403 ||
+      isUnverified
+    );
+  };
+
+  const loading = !isUnverified && reqLoading && schedLoading;
+  const error = (!isUnverifiedErr(reqError) ? reqError : null) || (!isUnverifiedErr(schedError) ? schedError : null);
 
   if (loading) {
     return (
@@ -710,23 +1017,59 @@ export default function LawyerDashboard() {
           </div>
           <div className="flex items-center gap-3">
             <Button
+              disabled={isUnverified}
               onClick={() => {
+                if (isUnverified) return;
                 setActiveTab('availability');
                 setShowAddSlot(true);
               }}
-              className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm"
+              className={isUnverified ? "opacity-50 cursor-not-allowed gap-2" : "bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm"}
             >
               <Plus className="h-4 w-4" /> Add Slot
             </Button>
             <Button
+              disabled={isUnverified}
               variant={activeTab === 'availability' ? 'primary' : 'secondary'}
-              onClick={() => setActiveTab('availability')}
-              className="gap-2"
+              onClick={() => {
+                if (isUnverified) return;
+                setActiveTab('availability');
+              }}
+              className={isUnverified ? "opacity-50 cursor-not-allowed gap-2" : "gap-2"}
             >
               <Calendar className="h-4 w-4" /> Availability
             </Button>
           </div>
         </div>
+
+        {/* Unverified Lawyer Warning Banner */}
+        {isUnverified && (
+          <div id="unverified-lawyer-banner" className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 text-sm">
+              <div className="font-semibold text-amber-100 flex items-center gap-2">
+                <span>Account Pending Verification</span>
+                {lawyerProfile?.verification_status === 'pending' && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    Under Review by Admin
+                  </span>
+                )}
+                {lawyerProfile?.verification_status === 'rejected' && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/40">
+                    Verification Rejected
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-amber-200/90 text-xs sm:text-sm">
+                Your account is pending verification. Complete your profile and submit documents to unlock Case Board, Availability, and Consultations.
+              </p>
+              {lawyerProfile?.verification_status === 'rejected' && lawyerProfile?.verification_note && (
+                <div className="mt-2.5 p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-red-300 text-xs">
+                  <span className="font-semibold">Rejection reason: </span>{lawyerProfile.verification_note}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Quick Stats Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -755,8 +1098,8 @@ export default function LawyerDashboard() {
           </Card>
 
           <Card
-            onClick={() => setActiveTab('availability')}
-            className="cursor-pointer hover:border-zinc-700 transition-colors"
+            onClick={() => !isUnverified && setActiveTab('availability')}
+            className={isUnverified ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:border-zinc-700 transition-colors"}
           >
             <CardContent className="p-6 flex items-center gap-4">
               <div className="h-12 w-12 rounded-xl flex items-center justify-center bg-blue-500/10 text-blue-500">
@@ -796,16 +1139,21 @@ export default function LawyerDashboard() {
         <div className="flex items-center gap-6 border-b border-zinc-800">
           <button
             id="tab-consultations"
-            onClick={() => setActiveTab('consultations')}
+            onClick={() => !isUnverified && setActiveTab('consultations')}
+            disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
-              activeTab === 'consultations'
+              isUnverified
+                ? 'opacity-40 cursor-not-allowed border-transparent text-zinc-500'
+                : activeTab === 'consultations'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Inbox className="h-4 w-4" />
             <span>Consultations</span>
-            {pendingRequests.length > 0 && (
+            {isUnverified ? (
+              <Lock className="h-3.5 w-3.5 text-zinc-500" />
+            ) : pendingRequests.length > 0 && (
               <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">
                 {pendingRequests.length}
               </span>
@@ -814,16 +1162,21 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-my-bids"
-            onClick={() => setActiveTab('my-bids')}
+            onClick={() => !isUnverified && setActiveTab('my-bids')}
+            disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === 'my-bids'
+              isUnverified
+                ? 'opacity-40 cursor-not-allowed border-transparent text-zinc-500'
+                : activeTab === 'my-bids'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Gavel className="h-4 w-4" />
             <span>My Bids</span>
-            {pendingBids.length > 0 && (
+            {isUnverified ? (
+              <Lock className="h-3.5 w-3.5 text-zinc-500" />
+            ) : pendingBids.length > 0 && (
               <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">
                 {pendingBids.length}
               </span>
@@ -832,16 +1185,21 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-case-board"
-            onClick={() => setActiveTab('cases')}
+            onClick={() => !isUnverified && setActiveTab('cases')}
+            disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === 'cases'
+              isUnverified
+                ? 'opacity-40 cursor-not-allowed border-transparent text-zinc-500'
+                : activeTab === 'cases'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Briefcase className="h-4 w-4" />
             <span>Case Board</span>
-            {isGoldVerified ? (
+            {isUnverified ? (
+              <Lock className="h-3.5 w-3.5 text-zinc-500" />
+            ) : isGoldVerified ? (
               <span className="bg-amber-500/20 text-amber-300 text-[11px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-amber-500/30">
                 <Sparkles className="h-3 w-3 text-amber-400" /> Gold
               </span>
@@ -854,16 +1212,21 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-availability"
-            onClick={() => setActiveTab('availability')}
+            onClick={() => !isUnverified && setActiveTab('availability')}
+            disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
-              activeTab === 'availability'
+              isUnverified
+                ? 'opacity-40 cursor-not-allowed border-transparent text-zinc-500'
+                : activeTab === 'availability'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <CalendarCheck className="h-4 w-4" />
             <span>Availability</span>
-            {availableSlots.length > 0 && (
+            {isUnverified ? (
+              <Lock className="h-3.5 w-3.5 text-zinc-500" />
+            ) : availableSlots.length > 0 && (
               <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full font-bold">
                 {availableSlots.length}
               </span>
@@ -917,6 +1280,9 @@ export default function LawyerDashboard() {
           isOpen={showAddSlot}
           onClose={() => setShowAddSlot(false)}
           onSuccess={reloadSchedules}
+          initialDate={modalDate}
+          initialStartTime={modalStartTime}
+          initialDuration={modalDuration}
         />
 
         {/* Tab Content 1: Consultations */}
@@ -962,11 +1328,16 @@ export default function LawyerDashboard() {
                       </thead>
                       <tbody className="divide-y divide-zinc-800">
                         {requests.map((req) => {
-                          const clientName = req.user_name || req.client_name || req.clientName || 'Client';
-                          const dateDisplay = formatDateEnGB(req.schedule_date || req.date || req.created_at) || 'Pending';
-                          const timeDisplay = req.start_time
-                            ? `${req.start_time}${req.end_time ? ' - ' + req.end_time : ''}`
-                            : req.time || '10:00 AM';
+                          const clientName = req.user_name || req.client_name || req.clientName || 'Unavailable user';
+                          const hasDate = Boolean(req.schedule?.date || req.schedule_date || req.date);
+                          const dateDisplay = hasDate
+                            ? formatDateEnGB(req.schedule?.date || req.schedule_date || req.date)
+                            : null;
+                          const startTime = req.schedule?.start_time || req.start_time;
+                          const endTime = req.schedule?.end_time || req.end_time;
+                          const timeDisplay = startTime
+                            ? `${startTime}${endTime ? ' - ' + endTime : ''}`
+                            : req.time || null;
 
                           return (
                             <tr
@@ -999,8 +1370,20 @@ export default function LawyerDashboard() {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 text-zinc-300 font-mono text-xs">{dateDisplay}</td>
-                              <td className="px-6 py-4 text-zinc-300 text-xs font-mono">{timeDisplay}</td>
+                              <td className="px-6 py-4 text-zinc-300 font-mono text-xs">
+                                {dateDisplay ? (
+                                  <span>{dateDisplay}</span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                                    Schedule pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-zinc-300 text-xs font-mono">
+                                {timeDisplay || (
+                                  <span className="text-zinc-500 italic">Schedule pending</span>
+                                )}
+                              </td>
                               <td className="px-6 py-4">
                                 {req.status === 'payment_submitted' || req.trx_id ? (
                                   <div className="space-y-1.5">
@@ -1411,14 +1794,15 @@ export default function LawyerDashboard() {
 
         {/* Tab Content 2: Availability */}
         {activeTab === 'availability' && (
-          <div className="space-y-8 animate-in fade-in duration-200">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
                     <CalendarCheck className="h-5 w-5 text-emerald-500" /> Your Availability Schedules
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-1">Configure your open dates and time windows for client consultations. Past slots are automatically hidden.</p>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    24-hour schedule grid (30-minute intervals). Click an open slot to configure consultation hours, including night emergency slots.
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Link to="/lawyer/availability">
@@ -1426,11 +1810,17 @@ export default function LawyerDashboard() {
                       variant="secondary"
                       className="gap-2 text-xs h-8"
                     >
-                      <Calendar className="h-3.5 w-3.5 text-emerald-400" /> Weekly Grid View
+                      <Calendar className="h-3.5 w-3.5 text-emerald-400" /> Standalone Grid View
                     </Button>
                   </Link>
                   <Button
-                    onClick={() => setShowAddSlot(true)}
+                    id="btn-add-slot-header"
+                    onClick={() => {
+                      setModalDate('');
+                      setModalStartTime('09:00');
+                      setModalDuration(30);
+                      setShowAddSlot(true);
+                    }}
                     className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm text-xs h-8"
                   >
                     <Plus className="h-3.5 w-3.5" /> Add Slot
@@ -1446,21 +1836,46 @@ export default function LawyerDashboard() {
                 </div>
               </div>
 
-              {futureSlots.length === 0 ? (
-                <EmptyState
-                  icon={Calendar}
-                  title="No upcoming schedules configured"
-                  description="Create available time slots so clients can book consultations with you."
-                  actionLabel="Add Availability Slot"
-                  onAction={() => setShowAddSlot(true)}
-                />
-              ) : (
-                <Card className="overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-zinc-900/50 text-zinc-400 border-b border-zinc-800">
-                        <tr>
-                          <th className="px-6 py-4 font-medium">Date</th>
+              {/* 24-Hour 48-Row Real Availability Grid */}
+              <AvailabilityGrid
+                schedules={schedules}
+                onOpenAddModal={(date, startTime, duration) => {
+                  setModalDate(date);
+                  setModalStartTime(startTime);
+                  setModalDuration(duration || 30);
+                  setShowAddSlot(true);
+                }}
+                onDeleteSlot={handleDeleteSlot}
+              />
+
+              {/* Upcoming Configured Slots Table */}
+              <div className="space-y-3 pt-4 border-t border-zinc-800">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-zinc-400" />
+                    Upcoming Configured Slots ({futureSlots.length})
+                  </h3>
+                </div>
+                {futureSlots.length === 0 ? (
+                  <EmptyState
+                    icon={Calendar}
+                    title="No upcoming schedules configured"
+                    description="Create available time slots so clients can book consultations with you."
+                    actionLabel="Add Availability Slot"
+                    onAction={() => {
+                      setModalDate('');
+                      setModalStartTime('09:00');
+                      setModalDuration(30);
+                      setShowAddSlot(true);
+                    }}
+                  />
+                ) : (
+                  <Card className="overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-zinc-900/50 text-zinc-400 border-b border-zinc-800">
+                          <tr>
+                            <th className="px-6 py-4 font-medium">Date</th>
                           <th className="px-6 py-4 font-medium">Time Window</th>
                           <th className="px-6 py-4 font-medium">Slot Status</th>
                           <th className="px-6 py-4 font-medium text-right">Actions</th>
@@ -1558,7 +1973,8 @@ export default function LawyerDashboard() {
                       {conversations.map((c) => {
                         const isSelected = selectedCitizen?.user_id === c.user_id;
                         const hasUnread = (c.unread_count || 0) > 0;
-                        const initial = (c.name || c.full_name || 'C')[0].toUpperCase();
+                        const citizenName = c.name || c.full_name || 'Unavailable user';
+                        const initial = (citizenName || 'U')[0].toUpperCase();
 
                         return (
                           <button
@@ -1592,7 +2008,7 @@ export default function LawyerDashboard() {
                                   {hasUnread && (
                                     <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0"></span>
                                   )}
-                                  <span>{c.name || c.full_name || 'Citizen'}</span>
+                                  <span>{citizenName}</span>
                                 </h4>
                                 <span
                                   className={`text-[10px] font-mono shrink-0 ${
@@ -1643,11 +2059,11 @@ export default function LawyerDashboard() {
                       <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/90 flex items-center justify-between shrink-0">
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-sm border border-blue-500/30">
-                            {(selectedCitizen.name || selectedCitizen.full_name || 'C')[0].toUpperCase()}
+                            {(selectedCitizen.name || selectedCitizen.full_name || 'U')[0].toUpperCase()}
                           </div>
                           <div>
                             <h3 className="text-base font-semibold text-zinc-50 flex items-center gap-2">
-                              {selectedCitizen.name || selectedCitizen.full_name || 'Citizen'}
+                              {selectedCitizen.name || selectedCitizen.full_name || 'Unavailable user'}
                               <span className="text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded border border-blue-500/30">
                                 CLIENT
                               </span>
@@ -1686,6 +2102,10 @@ export default function LawyerDashboard() {
                           return null;
                         }
 
+                        const sessionDate = citizenBooking.schedule?.date || citizenBooking.schedule_date || citizenBooking.date || 'Schedule pending';
+                        const sessionTime = citizenBooking.schedule?.start_time || citizenBooking.start_time || 'Schedule pending';
+                        const sessionEndTime = citizenBooking.schedule?.end_time || citizenBooking.end_time;
+
                         return (
                           <div className="px-6 py-3 bg-zinc-950/80 border-b border-zinc-800 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
@@ -1694,7 +2114,7 @@ export default function LawyerDashboard() {
                                 <span>Consultation Session</span>
                               </span>
                               <p className="text-xs text-zinc-300 font-medium">
-                                {citizenBooking.schedule_date || citizenBooking.date || 'Today'} • {citizenBooking.start_time || '10:00 AM'}{citizenBooking.end_time ? ` - ${citizenBooking.end_time}` : ''}
+                                {sessionDate} • {sessionTime}{sessionEndTime ? ` - ${sessionEndTime}` : ''}
                               </p>
                             </div>
                             <MeetingControls
@@ -1722,14 +2142,14 @@ export default function LawyerDashboard() {
                         <DirectMessageThread
                           messages={threadMessages}
                           currentUserId={user?.id}
-                          recipientName={selectedCitizen.name || selectedCitizen.full_name || 'Citizen'}
+                          recipientName={selectedCitizen.name || selectedCitizen.full_name || 'Unavailable user'}
                           onSendMessage={handleSendReply}
                           loading={threadLoading}
                           error={threadError}
                           onRetry={() => handleSelectCitizen(selectedCitizen)}
                           isReadOnly={isSelectedClientReadOnly}
                           isLawyerView={true}
-                          placeholder={`Reply to ${selectedCitizen.name || selectedCitizen.full_name || 'Citizen'}...`}
+                          placeholder={`Reply to ${selectedCitizen.name || selectedCitizen.full_name || 'Unavailable user'}...`}
                         />
                       </div>
                     </Card>
@@ -1753,156 +2173,642 @@ export default function LawyerDashboard() {
           </div>
         )}
 
-        {/* Tab Content 3: Profile & Verification Assets */}
-        {activeTab === 'profile' && (
-          <div className="space-y-8 animate-in fade-in duration-200 max-w-4xl">
-            {/* Avatar Card */}
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex flex-col sm:flex-row items-center gap-6">
-                  <div className="relative shrink-0">
-                    {avatarAsset ? (
-                      <img
-                        src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
-                        alt={lawyerName}
-                        className="h-28 w-28 rounded-full object-cover border-4 border-zinc-800 shadow-xl"
-                      />
-                    ) : (
-                      <div className="h-28 w-28 rounded-full bg-blue-600/10 border-4 border-zinc-800 text-blue-400 flex items-center justify-center text-3xl font-bold shadow-xl">
-                        {getInitials(lawyerName)}
+        {/* Tab Content 3: Unified Profile, Credentials & Practice Settings */}
+        {activeTab === 'profile' && (() => {
+          const checklist = lawyerProfile?.verification_checklist || {};
+          const allSlotsUploaded = Boolean(checklist.nid && checklist.bar_council_cert && checklist.practicing_license);
+
+          const VERIFICATION_SLOTS = [
+            {
+              key: 'nid',
+              title: 'National ID (NID)',
+              description: 'Bangladesh National Identity Card (Smart card or standard NID, clear front & back scan).',
+            },
+            {
+              key: 'bar_council_cert',
+              title: 'Bar Council Certificate',
+              description: 'Official Bangladesh Bar Council enrollment certificate or Sanad issuance.',
+            },
+            {
+              key: 'practicing_license',
+              title: 'Practicing License',
+              description: 'Current High Court permit or District Bar Association membership practicing certificate.',
+            },
+          ];
+
+          const getSlotAssetInfo = (slotKey) => {
+            const assetId = checklist[slotKey];
+            if (!assetId) return null;
+            const match = assets.find((a) => String(a.id) === String(assetId));
+            if (match) return match;
+            return { id: assetId, filename: 'Uploaded Credential', size_bytes: null };
+          };
+
+          return (
+            <div className="space-y-8 animate-in fade-in duration-200 max-w-4xl pb-12">
+              {/* Card 1: Avatar & Basic Identity */}
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex flex-col sm:flex-row items-center gap-6">
+                    <div className="relative shrink-0">
+                      {avatarAsset ? (
+                        <img
+                          src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
+                          alt={lawyerName}
+                          className="h-28 w-28 rounded-full object-cover border-4 border-zinc-800 shadow-xl"
+                        />
+                      ) : (
+                        <div className="h-28 w-28 rounded-full bg-blue-600/10 border-4 border-zinc-800 text-blue-400 flex items-center justify-center text-3xl font-bold shadow-xl">
+                          {getInitials(lawyerName)}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 text-center sm:text-left space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-center sm:justify-start">
+                        <h3 className="text-xl font-bold text-zinc-50">{lawyerName}</h3>
+                        {lawyerProfile?.verification_status === 'approved' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            <ShieldCheck className="h-3.5 w-3.5" /> Approved Advocate
+                          </span>
+                        )}
+                        {lawyerProfile?.verification_status === 'pending' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            <Clock className="h-3.5 w-3.5" /> Under Review by Admin
+                          </span>
+                        )}
+                        {lawyerProfile?.verification_status === 'rejected' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
+                            <X className="h-3.5 w-3.5" /> Verification Rejected
+                          </span>
+                        )}
+                        {(!lawyerProfile?.verification_status || lawyerProfile?.verification_status === 'none') && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700">
+                            <AlertCircle className="h-3.5 w-3.5" /> Unverified
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 text-center sm:text-left space-y-2">
-                    <h3 className="text-xl font-bold text-zinc-50">{lawyerName}</h3>
-                    <p className="text-sm text-zinc-400">
-                      Profile photo displayed to clients across directory search and consultations.
-                    </p>
-                    <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                      <input
-                        ref={avatarInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={handleAvatarChange}
-                        className="hidden"
-                      />
-                      <Button
-                        onClick={() => avatarInputRef.current?.click()}
-                        disabled={uploadingAvatar}
-                        isLoading={uploadingAvatar}
-                        className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm"
-                      >
-                        <Camera className="h-4 w-4" /> Change Photo
-                      </Button>
-                      <span className="text-xs text-zinc-500">
-                        Max 1 MB (PNG, JPG, WEBP)
-                      </span>
+                      <p className="text-sm text-zinc-400">
+                        Profile photo displayed to clients across directory search and consultations. Max 1 MB (PNG, JPG, WEBP).
+                      </p>
+                      <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleAvatarChange}
+                          className="hidden"
+                        />
+                        <Button
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={uploadingAvatar}
+                          isLoading={uploadingAvatar}
+                          className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm"
+                        >
+                          <Camera className="h-4 w-4" /> Change Photo
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Verification Documents Card */}
-            <Card>
-              <CardContent className="p-6 space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="h-5 w-5 text-emerald-400" />
-                      <h3 className="text-lg font-bold text-zinc-50">Verification Documents</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono">
-                        {verificationDocs.length}/3
+              {/* Card 2: Credential Verification Checklist (TASK 2) */}
+              <Card className="border border-zinc-800">
+                <CardContent className="p-6 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-5 w-5 text-emerald-400" />
+                        <h3 className="text-lg font-bold text-zinc-50">Credential Verification Documents</h3>
+                      </div>
+                      <p className="text-sm text-zinc-400 mt-1">
+                        All advocates on Legal Bridge must submit the 3 required documents below for compliance verification before taking consultations.
+                      </p>
+                    </div>
+
+                    <div className="shrink-0">
+                      {lawyerProfile?.verification_status === 'approved' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <CheckCircle2 className="h-4 w-4" /> Verified
+                        </span>
+                      ) : lawyerProfile?.verification_status === 'pending' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          <Clock className="h-4 w-4" /> Under Review by Admin
+                        </span>
+                      ) : lawyerProfile?.verification_status === 'rejected' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/40">
+                          <X className="h-4 w-4" /> Rejected
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                          3 Slots Required
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Rejection Note Alert */}
+                  {lawyerProfile?.verification_status === 'rejected' && (
+                    <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/30 text-red-200 text-sm space-y-1.5">
+                      <div className="font-semibold text-red-100 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-red-400" />
+                        <span>Administrator Feedback</span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-red-200/90">
+                        {lawyerProfile.verification_note ||
+                          'Your verification submission was rejected. Please re-upload clear copies of your documents and resubmit.'}
+                      </p>
+                      <p className="text-xs text-red-400 mt-1">
+                        Replace any unreadable or expired documents below, then click &quot;Resubmit for Verification&quot;.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Pending Notice */}
+                  {lawyerProfile?.verification_status === 'pending' && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs flex items-center gap-2.5">
+                      <Clock className="h-4 w-4 text-amber-400 shrink-0" />
+                      <span>
+                        Your credentials have been submitted and are currently under review by our administration team. You will receive a notification upon approval.
                       </span>
                     </div>
-                    <p className="text-sm text-zinc-400 mt-1">
-                      Upload your Bar Council certificate, NID, or practicing license.
-                    </p>
-                  </div>
+                  )}
 
-                  <div>
-                    <input
-                      ref={docInputRef}
-                      type="file"
-                      accept=".pdf,image/png,image/jpeg"
-                      onChange={handleDocUpload}
-                      className="hidden"
-                    />
-                    <Button
-                      onClick={() => docInputRef.current?.click()}
-                      disabled={uploadingDoc || verificationDocs.length >= 3}
-                      isLoading={uploadingDoc}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2 shadow-sm"
-                    >
-                      <Upload className="h-4 w-4" /> Upload Document
-                    </Button>
-                  </div>
-                </div>
+                  {/* 3-Slot Verification Checklist */}
+                  <div className="space-y-4">
+                    {VERIFICATION_SLOTS.map((slot) => {
+                      const slotAsset = getSlotAssetInfo(slot.key);
+                      const isUploaded = Boolean(slotAsset);
 
-                {/* Hint callout */}
-                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs leading-relaxed">
-                  <Info className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                  <span>
-                    Documents are public only after admin approval. Until verified, they are securely restricted to you and platform moderators.
-                  </span>
-                </div>
-
-                {/* Documents List */}
-                {verificationDocs.length === 0 ? (
-                  <div className="text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-xl">
-                    <FileText className="h-8 w-8 mx-auto mb-2 text-zinc-600" />
-                    <p>No verification documents uploaded yet.</p>
-                    <p className="text-xs text-zinc-600 mt-1">Upload up to 3 documents (PDF, PNG, JPG, max 2 MB each).</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {verificationDocs.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="h-10 w-10 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
-                            <FileText className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-zinc-100 truncate">{doc.filename}</p>
-                            <div className="flex items-center gap-3 text-xs text-zinc-400 mt-0.5 font-mono">
-                              <span>{formatBytes(doc.size_bytes)}</span>
-                              <span>•</span>
-                              <span>{doc.created_at ? new Date(doc.created_at).toLocaleDateString() : ''}</span>
+                      return (
+                        <div
+                          key={slot.key}
+                          id={`slot-${slot.key}`}
+                          className={`p-4 rounded-xl border transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                            isUploaded
+                              ? 'bg-zinc-950/80 border-emerald-500/30 hover:border-emerald-500/50'
+                              : 'bg-zinc-950/50 border-zinc-800 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3.5 min-w-0">
+                            <div className="mt-0.5 shrink-0">
+                              {isUploaded ? (
+                                <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                              ) : (
+                                <div className="h-5 w-5 rounded-full border-2 border-zinc-600 flex items-center justify-center text-[10px] text-zinc-500 font-bold" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-semibold text-zinc-100">{slot.title}</h4>
+                                {isUploaded && (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                    Uploaded
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-zinc-400 mt-0.5">{slot.description}</p>
+                              {isUploaded && (
+                                <div className="flex items-center gap-3 text-xs text-zinc-400 mt-2 font-mono">
+                                  <span className="text-zinc-300 font-medium truncate max-w-xs">{slotAsset.filename}</span>
+                                  {slotAsset.size_bytes ? (
+                                    <>
+                                      <span>•</span>
+                                      <span>{formatBytes(slotAsset.size_bytes)}</span>
+                                    </>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                          <a
-                            href={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${doc.id}/file`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition-colors"
-                          >
-                            <Eye className="h-3.5 w-3.5 text-zinc-400" /> View
-                          </a>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteAsset(doc.id)}
-                            isLoading={deletingAssetId === doc.id}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs gap-1 px-2.5 py-1.5"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Delete
-                          </Button>
+                          {/* Hidden File Input for this slot */}
+                          <input
+                            ref={slotRefs[slot.key]}
+                            type="file"
+                            accept=".pdf,image/png,image/jpeg"
+                            onChange={(e) => handleSlotUpload(slot.key, e)}
+                            className="hidden"
+                          />
+
+                          {/* Slot Actions */}
+                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                            {isUploaded ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAsset(slotAsset.id)}
+                                  disabled={downloadingAssetId === slotAsset.id}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  {downloadingAssetId === slotAsset.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />
+                                  ) : (
+                                    <Eye className="h-3.5 w-3.5 text-zinc-400" />
+                                  )}
+                                  <span>View</span>
+                                </button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => slotRefs[slot.key].current?.click()}
+                                  disabled={uploadingSlot === slot.key}
+                                  isLoading={uploadingSlot === slot.key}
+                                  className="text-xs gap-1.5 px-3 py-1.5"
+                                >
+                                  <Upload className="h-3.5 w-3.5 text-zinc-400" />
+                                  <span>Replace</span>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteAsset(slotAsset.id)}
+                                  isLoading={deletingAssetId === slotAsset.id}
+                                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs px-2 py-1.5"
+                                  title="Remove document"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => slotRefs[slot.key].current?.click()}
+                                disabled={uploadingSlot === slot.key}
+                                isLoading={uploadingSlot === slot.key}
+                                className="bg-blue-600 hover:bg-blue-500 text-white text-xs gap-1.5 px-3.5 py-1.5 shadow-sm"
+                              >
+                                <Upload className="h-3.5 w-3.5" />
+                                <span>Upload</span>
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+
+                  {/* Submission Row */}
+                  <div className="pt-4 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="text-xs text-zinc-400">
+                      {lawyerProfile?.verification_status === 'approved' ? (
+                        <span className="text-emerald-400 font-medium">Your credentials have been verified and approved.</span>
+                      ) : lawyerProfile?.verification_status === 'pending' ? (
+                        <span className="text-amber-300 font-medium">Documents are undergoing administrative review.</span>
+                      ) : allSlotsUploaded ? (
+                        <span className="text-emerald-400 font-medium">All 3 documents uploaded! Ready to submit for review.</span>
+                      ) : (
+                        <span className="text-zinc-500">Please upload all 3 documents above to enable submission.</span>
+                      )}
+                    </div>
+
+                    <div>
+                      {lawyerProfile?.verification_status === 'approved' ? (
+                        <Button disabled className="opacity-60 bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 gap-2">
+                          <ShieldCheck className="h-4 w-4" /> Credentials Verified
+                        </Button>
+                      ) : lawyerProfile?.verification_status === 'pending' ? (
+                        <Button disabled className="opacity-60 bg-amber-600/30 text-amber-300 border border-amber-500/30 gap-2">
+                          <Clock className="h-4 w-4" /> Under Review by Admin
+                        </Button>
+                      ) : lawyerProfile?.verification_status === 'rejected' ? (
+                        <Button
+                          id="btn-submit-verification"
+                          onClick={handleSubmitVerification}
+                          disabled={!allSlotsUploaded || isSubmittingVerification}
+                          isLoading={isSubmittingVerification}
+                          className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-sm gap-2"
+                        >
+                          <RefreshCw className="h-4 w-4" /> Resubmit for Verification
+                        </Button>
+                      ) : (
+                        <Button
+                          id="btn-submit-verification"
+                          onClick={handleSubmitVerification}
+                          disabled={!allSlotsUploaded || isSubmittingVerification}
+                          isLoading={isSubmittingVerification}
+                          className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-sm gap-2"
+                        >
+                          <CheckCircle2 className="h-4 w-4" /> Submit for Verification
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 3: Professional Practice Details */}
+              <Card>
+                <CardContent className="p-6 space-y-6">
+                  <div className="pb-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="h-5 w-5 text-blue-500" />
+                      <h3 className="text-lg font-bold text-zinc-50">Professional Practice Details</h3>
+                    </div>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      Keep your professional information up to date so clients can find your profile in searches.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Full Name */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Full Name</label>
+                      <input
+                        type="text"
+                        value={profileFullName}
+                        onChange={(e) => setProfileFullName(e.target.value)}
+                        placeholder="e.g. Adv. Md. Rafiqul Islam"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none"
+                      />
+                    </div>
+
+                    {/* Bar Council ID */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Bar Council ID / Sanad No</label>
+                      <input
+                        type="text"
+                        value={profileBarCouncilId}
+                        onChange={(e) => setProfileBarCouncilId(e.target.value)}
+                        placeholder="e.g. BC-12345/DHK"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none font-mono"
+                      />
+                    </div>
+
+                    {/* District */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">District / Division</label>
+                      <select
+                        value={profileDistrict}
+                        onChange={(e) => setProfileDistrict(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer"
+                      >
+                        <option value="Dhaka">Dhaka</option>
+                        <option value="Chittagong">Chittagong</option>
+                        <option value="Sylhet">Sylhet</option>
+                        <option value="Rajshahi">Rajshahi</option>
+                        <option value="Khulna">Khulna</option>
+                        <option value="Barisal">Barisal</option>
+                        <option value="Rangpur">Rangpur</option>
+                        <option value="Mymensingh">Mymensingh</option>
+                        <option value="Comilla">Comilla</option>
+                        <option value="Gazipur">Gazipur</option>
+                        <option value="Narayanganj">Narayanganj</option>
+                        <option value="Bogra">Bogra</option>
+                      </select>
+                    </div>
+
+                    {/* Specialization */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Primary Specialization</label>
+                      <select
+                        value={profileSpecialization}
+                        onChange={(e) => setProfileSpecialization(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer"
+                      >
+                        <option value="Civil Litigation">Civil Litigation</option>
+                        <option value="Criminal Law">Criminal Law</option>
+                        <option value="Corporate & Commercial">Corporate & Commercial</option>
+                        <option value="Family & Divorce">Family & Divorce</option>
+                        <option value="Land & Property">Land & Property</option>
+                        <option value="Constitutional / Writ">Constitutional / Writ</option>
+                        <option value="Cyber & Digital Law">Cyber & Digital Law</option>
+                        <option value="Banking & Finance">Banking & Finance</option>
+                        <option value="Labor & Employment">Labor & Employment</option>
+                        <option value="Taxation & Customs">Taxation & Customs</option>
+                      </select>
+                    </div>
+
+                    {/* Years of Experience */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Years of Experience</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={profileYearsExp}
+                        onChange={(e) => setProfileYearsExp(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none font-mono"
+                      />
+                    </div>
+
+                    {/* Hourly Fee */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Consultation Fee (BDT ৳)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={profileHourlyRate}
+                        onChange={(e) => setProfileHourlyRate(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none font-mono"
+                      />
+                    </div>
+
+                    {/* Phone Number */}
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium text-zinc-200">Contact Phone Number</label>
+                      <input
+                        type="text"
+                        value={profilePhone}
+                        onChange={(e) => setProfilePhone(e.target.value)}
+                        placeholder="+88017XXXXXXXX"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none font-mono"
+                      />
+                    </div>
+
+                    {/* Bio / Description */}
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium text-zinc-200">Professional Bio & Practice Overview</label>
+                      <textarea
+                        rows={4}
+                        value={profileBio}
+                        onChange={(e) => setProfileBio(e.target.value)}
+                        placeholder="Provide details on your practice areas, court admissions, notable representation, and background..."
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none resize-y"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 4: Consultation Payment Settings (bKash / Nagad) */}
+              <Card>
+                <CardContent className="p-6 space-y-6">
+                  <div className="pb-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-emerald-400" />
+                      <h3 className="text-lg font-bold text-zinc-50">Consultation Fee Payment Settings</h3>
+                    </div>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      Configure your bKash and Nagad numbers. Clients will send consultation fees directly to these mobile banking accounts.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* bKash */}
+                    <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-pink-400">bKash Account</span>
+                        <select
+                          value={profileBkashType}
+                          onChange={(e) => setProfileBkashType(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-300 px-2 py-1 outline-none"
+                        >
+                          <option value="Personal">Personal</option>
+                          <option value="Merchant">Merchant</option>
+                          <option value="Agent">Agent</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        value={profileBkash}
+                        onChange={(e) => setProfileBkash(e.target.value)}
+                        placeholder="01XXXXXXXXX"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-sm text-zinc-50 font-mono focus:ring-2 focus:ring-pink-500/40 outline-none"
+                      />
+                    </div>
+
+                    {/* Nagad */}
+                    <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-orange-400">Nagad Account</span>
+                        <select
+                          value={profileNagadType}
+                          onChange={(e) => setProfileNagadType(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-300 px-2 py-1 outline-none"
+                        >
+                          <option value="Personal">Personal</option>
+                          <option value="Merchant">Merchant</option>
+                          <option value="Agent">Agent</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        value={profileNagad}
+                        onChange={(e) => setProfileNagad(e.target.value)}
+                        placeholder="01XXXXXXXXX"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-sm text-zinc-50 font-mono focus:ring-2 focus:ring-orange-500/40 outline-none"
+                      />
+                    </div>
+
+                    {/* Payment Instructions */}
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium text-zinc-200">Client Payment Instructions</label>
+                      <textarea
+                        rows={2}
+                        value={profilePaymentInstructions}
+                        onChange={(e) => setProfilePaymentInstructions(e.target.value)}
+                        placeholder="e.g. Please use your Booking ID as the reference in bKash/Nagad and upload the transaction screenshot."
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none resize-y"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 5: Meeting Link Settings */}
+              <Card>
+                <CardContent className="p-6 space-y-6">
+                  <div className="pb-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <Video className="h-5 w-5 text-blue-500" />
+                      <h3 className="text-lg font-bold text-zinc-50">Default Consultation Meeting Settings</h3>
+                    </div>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      When a client booking is confirmed, this meeting link is automatically attached to the consultation session.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Meeting Provider</label>
+                      <select
+                        value={meetingProvider}
+                        onChange={(e) => setMeetingProvider(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer"
+                      >
+                        <option value="Google Meet">Google Meet</option>
+                        <option value="Zoom">Zoom</option>
+                        <option value="Microsoft Teams">Microsoft Teams</option>
+                        <option value="Phone Call">Phone Call</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-zinc-200">Meeting Link / Phone Number</label>
+                      <input
+                        type="text"
+                        value={meetingLink}
+                        onChange={(e) => setMeetingLink(e.target.value)}
+                        placeholder={meetingProvider === 'Phone Call' ? '+88017XXXXXXXX' : 'https://meet.google.com/abc-defg-hij'}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 6: Gold Badge Status */}
+              <Card className="border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-zinc-950 to-zinc-950">
+                <CardContent className="p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+                        <Sparkles className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-bold text-zinc-50">Gold Verified Advocate</h3>
+                          {isGoldVerified ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                              <Check className="h-3 w-3" /> Active
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700">
+                              Inactive
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-zinc-300 mt-1 max-w-xl">
+                          {isGoldVerified
+                            ? 'You hold an active Gold Verified Advocate status. Your profile features priority ranking in citizen searches, a verified badge, and full access to bid on the client Case Board.'
+                            : 'Upgrade your profile to Gold Verified (৳2,500/yr) to unlock the Case Board, submit direct client bids, and receive priority placement in the lawyer directory.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {!isGoldVerified && (
+                      <Link to="/pricing?role=lawyer" className="shrink-0 w-full sm:w-auto">
+                        <Button className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-bold shadow-md shadow-amber-500/20 gap-1.5">
+                          <Sparkles className="h-4 w-4" /> Upgrade to Gold (৳2,500/yr)
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Account Security & Password */}
+              <SecurityCard />
+
+              {/* Bottom Sticky/Floating Save Action Bar */}
+              <div className="pt-2 flex justify-end">
+                <Button
+                  id="btn-save-profile"
+                  onClick={handleSaveProfile}
+                  isLoading={isSavingProfile}
+                  disabled={isSavingProfile}
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-8 shadow-lg shadow-blue-600/25 gap-2 text-sm"
+                >
+                  <Check className="h-4 w-4" /> Save Profile Changes
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Tab Content: Meeting Settings */}
         {activeTab === 'meetings' && (
@@ -2366,36 +3272,13 @@ export default function LawyerDashboard() {
               ) : (
                 <div className="space-y-2">
                   {detailsModalCase.attachment_asset_ids.map((assetId, index) => (
-                    <div
+                    <EvidenceFileItem
                       key={assetId}
-                      className="flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-9 w-9 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
-                          <FileText className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-zinc-200 truncate">
-                            Case Evidence Document #{index + 1}
-                          </p>
-                          <p className="text-[10px] text-zinc-500 font-mono truncate">
-                            ID: {assetId}
-                          </p>
-                        </div>
-                      </div>
-
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleOpenAsset(assetId)}
-                        disabled={downloadingAssetId === assetId}
-                        isLoading={downloadingAssetId === assetId}
-                        className="text-xs gap-1.5 h-8 px-3 shrink-0"
-                      >
-                        <Eye className="h-3.5 w-3.5 text-zinc-400" />
-                        <span>View File</span>
-                      </Button>
-                    </div>
+                      assetId={assetId}
+                      index={index}
+                      onOpen={handleOpenAsset}
+                      isOpening={downloadingAssetId === assetId}
+                    />
                   ))}
                 </div>
               )}

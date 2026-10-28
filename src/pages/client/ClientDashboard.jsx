@@ -7,6 +7,7 @@ import Badge from '../../components/ui/Badge';
 import EmptyState from '../../components/ui/EmptyState';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
+import SecurityCard from '../../components/ui/SecurityCard';
 import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import CompletePaymentModal from '../../components/ui/CompletePaymentModal';
 import ReviewModal from '../../components/ui/ReviewModal';
@@ -93,23 +94,27 @@ export default function ClientDashboard() {
 
   const formatDateEnGB = (dateVal) => {
     if (!dateVal) return '';
-    if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
-      const [y, m, d] = dateVal.slice(0, 10).split('-').map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+    try {
+      if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
+        const [y, m, d] = dateVal.slice(0, 10).split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return String(dateVal);
+      return d.toLocaleDateString('en-GB', {
         weekday: 'short',
         day: '2-digit',
         month: 'short',
         year: 'numeric',
       });
+    } catch {
+      return String(dateVal || '');
     }
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return String(dateVal);
-    return d.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
   };
 
   const formatTimeRange = (b) => {
@@ -422,7 +427,7 @@ export default function ClientDashboard() {
                       {isPro ? 'Pro Member' : 'Free Account'}
                     </span>
                   </div>
-                  <p className="text-sm text-zinc-400 mt-1">{user?.email || 'citizen@bdlegal.ai'}</p>
+                  <p className="text-sm text-zinc-400 mt-1">{user?.email || 'citizen@legalbridge.ai'}</p>
                 </div>
               </div>
 
@@ -459,6 +464,9 @@ export default function ClientDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Security & Password Card */}
+        <SecurityCard />
 
         {/* Quick Stat Cards */}
         <div className="grid sm:grid-cols-3 gap-6">
@@ -508,9 +516,15 @@ export default function ClientDashboard() {
                   <p className="text-lg font-bold text-zinc-50 truncate">
                     {nextBooking.lawyer_name || nextBooking.lawyerName || 'Advocate'}
                   </p>
-                  <p className="text-xs text-zinc-300 font-mono">
-                    {formatDateEnGB(nextBooking.schedule_date || nextBooking.date || nextBooking.start)}
-                  </p>
+                  {nextBooking.schedule?.date || nextBooking.schedule_date || nextBooking.date || nextBooking.start ? (
+                    <p className="text-xs text-zinc-300 font-mono">
+                      {formatDateEnGB(nextBooking.schedule?.date || nextBooking.schedule_date || nextBooking.date || nextBooking.start)}
+                    </p>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                      Schedule pending
+                    </span>
+                  )}
                   <p className="text-xs text-zinc-400 font-mono">
                     {formatSlot(nextBooking)}
                   </p>
@@ -712,7 +726,13 @@ export default function ClientDashboard() {
                               )}
                             </div>
                             <div className="text-xs text-zinc-400 flex flex-wrap items-center gap-2 font-mono">
-                              <span>{formatDateEnGB(b.schedule_date || b.date || b.start)}</span>
+                              {b.schedule?.date || b.schedule_date || b.date || b.start ? (
+                                <span>{formatDateEnGB(b.schedule?.date || b.schedule_date || b.date || b.start)}</span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                                  Schedule pending
+                                </span>
+                              )}
                               <span>•</span>
                               <span>{formatSlot(b)}</span>
                             </div>
@@ -848,7 +868,13 @@ export default function ClientDashboard() {
                               </Badge>
                             </div>
                             <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-2 font-mono">
-                              <span>{formatDateEnGB(b.schedule_date || b.date || b.start || b.created_at)}</span>
+                              {b.schedule?.date || b.schedule_date || b.date || b.start || b.created_at ? (
+                                <span>{formatDateEnGB(b.schedule?.date || b.schedule_date || b.date || b.start || b.created_at)}</span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                                  Schedule pending
+                                </span>
+                              )}
                               <span>•</span>
                               <span>{formatSlot(b)}</span>
                             </div>
@@ -1228,7 +1254,13 @@ export default function ClientDashboard() {
               <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-1">
                 <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Consultation Date</span>
                 <p className="font-semibold text-zinc-100 font-mono text-sm">
-                  {formatDateEnGB(selectedBooking.schedule_date || selectedBooking.date || selectedBooking.start)}
+                  {selectedBooking.schedule?.date || selectedBooking.schedule_date || selectedBooking.date || selectedBooking.start ? (
+                    formatDateEnGB(selectedBooking.schedule?.date || selectedBooking.schedule_date || selectedBooking.date || selectedBooking.start)
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                      Schedule pending
+                    </span>
+                  )}
                 </p>
               </div>
 

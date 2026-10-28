@@ -26,6 +26,7 @@ import ProPaywallModal from '../../components/ui/ProPaywallModal';
 import DirectMessageThread from '../../components/ui/DirectMessageThread';
 import MeetingControls from '../../components/ui/MeetingControls';
 import ReviewModal from '../../components/ui/ReviewModal';
+import { openAssetInNewTab } from '../../utils/assets';
 import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
@@ -53,6 +54,16 @@ export default function LawyerProfilePage() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewModalBooking, setReviewModalBooking] = useState(null);
+  const [openingDocId, setOpeningDocId] = useState(null);
+
+  const handleViewVerificationDoc = async (docId) => {
+    setOpeningDocId(docId);
+    try {
+      await openAssetInNewTab(docId);
+    } finally {
+      setOpeningDocId(null);
+    }
+  };
 
   useEffect(() => {
     api
@@ -687,14 +698,17 @@ export default function LawyerProfilePage() {
                               </p>
                             </div>
                           </div>
-                          <a
-                            href={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${doc.id}/file`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/20 transition-all shrink-0"
+                          <button
+                            type="button"
+                            onClick={() => handleViewVerificationDoc(doc.id)}
+                            disabled={openingDocId === doc.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/20 transition-all shrink-0 cursor-pointer disabled:opacity-50"
                           >
-                            View
-                          </a>
+                            {openingDocId === doc.id ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : null}
+                            <span>View</span>
+                          </button>
                         </div>
                       ))}
                     </div>

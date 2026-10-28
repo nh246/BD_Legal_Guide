@@ -22,9 +22,11 @@ import Modal from '../../components/ui/Modal';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
+import useAuthStore from '../../store/useAuthStore';
 import { toast } from '../../store/useToastStore';
 
 export const MODERATOR_SCOPES = [
+  { key: 'analytics:view', label: 'analytics:view', name: 'Analytics View', desc: 'Access platform analytics and dashboard overview metrics.' },
   { key: 'users:view', label: 'users:view', name: 'View Users', desc: 'Inspect user accounts, usage, and metrics.' },
   { key: 'users:edit', label: 'users:edit', name: 'Manage Users', desc: 'Update user profiles and change account status.' },
   { key: 'lawyers:view', label: 'lawyers:view', name: 'View Lawyers', desc: 'Browse and inspect lawyer verification applications and credentials.' },
@@ -37,7 +39,9 @@ export const MODERATOR_SCOPES = [
 ];
 
 export default function AdminModerators() {
-  const { data, loading, error, reload } = useApi('/admin/moderators');
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
+  const { data, loading, error, reload } = useApi(isAdmin ? '/admin/moderators' : null);
   const moderators = asList(data, 'moderators');
 
   // Search filter for moderators list
@@ -190,6 +194,25 @@ export default function AdminModerators() {
       setDemoteLoading(false);
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="h-full flex items-center justify-center p-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full text-center">
+          <div className="h-16 w-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Lock className="h-8 w-8 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-50 mb-3">Access Restricted</h2>
+          <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
+            Moderator management is restricted to superusers only.
+          </p>
+          <div className="inline-flex bg-zinc-950 border border-zinc-800 px-4 py-2 rounded-lg text-xs font-mono text-zinc-300">
+            Requires: <span className="text-red-400 ml-2">ADMIN_ONLY</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8">

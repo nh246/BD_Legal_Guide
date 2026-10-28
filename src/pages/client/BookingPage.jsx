@@ -17,6 +17,49 @@ const STEPS = [
   { num: 3, title: 'Confirm' },
 ];
 
+function parseSlotParam(slotParam) {
+  if (!slotParam || typeof slotParam !== 'string') return null;
+  const trimmed = slotParam.trim();
+  if (!trimmed) return null;
+
+  try {
+    // 1. Check legacy Day-Time format: e.g. "Wed-09:00" or "wed-9:00"
+    const legacyMatch = trimmed.match(/^([A-Za-z]{3})-(\d{1,2}:\d{2})/);
+    if (legacyMatch) {
+      const inputDay = legacyMatch[1].toLowerCase();
+      const matchedDay = DAYS.find((d) => d.toLowerCase() === inputDay);
+      let time = legacyMatch[2];
+      if (time.length === 4) time = '0' + time;
+      if (matchedDay) {
+        return { day: matchedDay, time };
+      }
+    }
+
+    // 2. Check ISO or Date string: e.g. "2026-10-28T09:00", "2026-10-28 09:00", "2026-10-28"
+    let parseableStr = trimmed;
+    if (/^\d{4}-\d{2}-\d{2}-\d{1,2}:\d{2}/.test(trimmed)) {
+      parseableStr = trimmed.slice(0, 10) + 'T' + trimmed.slice(11);
+    }
+    const d = new Date(parseableStr);
+    if (!isNaN(d.getTime())) {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const day = dayNames[d.getDay()];
+      const matchedDay = DAYS.find((item) => item === day);
+      if (matchedDay) {
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const time = hh === '00' && mm === '00' && !trimmed.includes(':') ? '09:00' : `${hh}:${mm}`;
+        return { day: matchedDay, time };
+      }
+    }
+  } catch (e) {
+    console.warn('Could not parse ?slot= query parameter:', e);
+  }
+
+  // If unparseable, ignore param and return null
+  return null;
+}
+
 export default function BookingPage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -34,12 +77,14 @@ export default function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [caseBrief, setCaseBrief] = useState('');
   const [consent, setConsent] = useState(false);
+  const [createdBooking, setCreatedBooking] = useState(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   useEffect(() => {
     if (urlSlot) {
-      const [day, time] = urlSlot.split('-');
-      if (day && time) {
-        setSelectedSlot({ day, time });
+      const parsed = parseSlotParam(urlSlot);
+      if (parsed) {
+        setSelectedSlot(parsed);
       }
     }
   }, [urlSlot]);
@@ -84,9 +129,6 @@ export default function BookingPage() {
     if (step === 2) return caseBrief.trim() !== '' && consent;
     return true;
   };
-
-  const [createdBooking, setCreatedBooking] = useState(null);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   const handleNext = async () => {
     if (step < 3) {

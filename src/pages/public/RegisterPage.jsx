@@ -58,7 +58,7 @@ export default function RegisterPage() {
           <div className="h-14 w-14 mx-auto rounded-2xl bg-blue-600/10 flex items-center justify-center mb-4 border border-blue-500/20">
             <Scale className="h-7 w-7 text-blue-500" />
           </div>
-          <h1 className="text-3xl font-bold text-zinc-50 mb-2">Join BD Legal Guide AI</h1>
+          <h1 className="text-3xl font-bold text-zinc-50 mb-2">Join Legal Bridge</h1>
           <p className="text-zinc-400">Create your account to continue.</p>
         </div>
 

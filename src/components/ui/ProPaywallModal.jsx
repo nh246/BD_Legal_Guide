@@ -53,7 +53,7 @@ export default function ProPaywallModal({ isOpen, onClose, message, onSuccess })
         
         <h2 className="text-2xl font-bold text-zinc-50 mb-2">Upgrade to Pro</h2>
         <p className="text-zinc-400 text-sm mb-4">
-          Unlock the Advanced Features of BD Legal Guide AI.
+          Unlock the Advanced Features of Legal Bridge.
         </p>
 
         {message && (

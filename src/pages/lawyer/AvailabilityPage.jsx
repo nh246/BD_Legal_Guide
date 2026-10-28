@@ -18,27 +18,10 @@ import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import AddSlotModal from '../../components/ui/AddSlotModal';
+import AvailabilityGrid from '../../components/ui/AvailabilityGrid';
 import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
-
-const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const GRID_HOURS = [
-  '08:00 AM',
-  '09:00 AM',
-  '10:00 AM',
-  '11:00 AM',
-  '12:00 PM',
-  '01:00 PM',
-  '02:00 PM',
-  '03:00 PM',
-  '04:00 PM',
-  '05:00 PM',
-  '06:00 PM',
-  '07:00 PM',
-  '08:00 PM',
-];
 
 const formatIsoDate = (d) => {
   const year = d.getFullYear();
@@ -57,13 +40,6 @@ const formatDateEnGB = (dateStr) => {
   return `${d} ${monthName} ${y}`;
 };
 
-const getHourBucket = (timeStr) => {
-  if (!timeStr) return '';
-  const m = timeStr.trim().match(/^(\d{2}):\d{2}\s*(AM|PM)$/i);
-  if (!m) return timeStr;
-  return `${m[1]}:00 ${m[2].toUpperCase()}`;
-};
-
 export default function AvailabilityPage() {
   const { data: schedulesData, loading, error, reload } = useApi('/lawyer/schedules');
   const schedules = useMemo(() => asList(schedulesData), [schedulesData]);
@@ -71,10 +47,9 @@ export default function AvailabilityPage() {
   // Modal states for adding slot
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalDate, setModalDate] = useState('');
-  const [modalStartTime, setModalStartTime] = useState('10:00 AM');
+  const [modalStartTime, setModalStartTime] = useState('09:00');
+  const [modalDuration, setModalDuration] = useState(30);
 
-  // Tooltip / Details popover for occupied cell
-  const [activeCellTooltip, setActiveCellTooltip] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   // Compute next 7 days window: today through today + 6 days
@@ -104,29 +79,6 @@ export default function AvailabilityPage() {
 
   const todayIso = useMemo(() => formatIsoDate(new Date()), []);
 
-  // Filter future unbooked slots within next 7 days and group by (weekday, hourBucket)
-  const slotsByCell = useMemo(() => {
-    const grouped = {};
-
-    schedules.forEach((slot) => {
-      // Must be unbooked and within next 7 days
-      if (slot.is_booked) return;
-      if (!next7DaysInfo.validDates.has(slot.date)) return;
-
-      const dateObj = new Date(slot.date + 'T00:00:00');
-      const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
-      const hourBucket = getHourBucket(slot.start_time);
-      const key = `${weekday}-${hourBucket}`;
-
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(slot);
-    });
-
-    return grouped;
-  }, [schedules, next7DaysInfo]);
-
   // All future slots for the table view below the grid
   const futureSlots = useMemo(() => {
     return schedules
@@ -137,38 +89,11 @@ export default function AvailabilityPage() {
       });
   }, [schedules, todayIso]);
 
-  const handleEmptyCellClick = (day, hour) => {
-    const dayInfo = next7DaysInfo.map[day];
-    setModalDate(dayInfo ? dayInfo.dateStr : todayIso);
-    setModalStartTime(hour);
-    setIsAddModalOpen(true);
-  };
-
-  const handleOccupiedCellClick = (day, hour, cellSlots) => {
-    const dayInfo = next7DaysInfo.map[day];
-    setActiveCellTooltip({
-      day,
-      hour,
-      slots: cellSlots,
-      dateStr: dayInfo?.dateStr || '',
-      displayDate: dayInfo?.displayDate || '',
-    });
-  };
-
   const handleDeleteSlot = async (slotId) => {
     setDeletingId(slotId);
     try {
       await api.delete(`/lawyer/schedules/${slotId}`);
       toast('Schedule slot deleted', 'info');
-      // If active cell tooltip has this slot, remove it from list
-      if (activeCellTooltip) {
-        const remaining = activeCellTooltip.slots.filter((s) => s.id !== slotId);
-        if (remaining.length === 0) {
-          setActiveCellTooltip(null);
-        } else {
-          setActiveCellTooltip({ ...activeCellTooltip, slots: remaining });
-        }
-      }
       reload();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to delete slot'), 'error');
@@ -236,200 +161,18 @@ export default function AvailabilityPage() {
           </div>
         </div>
 
-        {/* Legend Banner */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs">
-          <div className="flex flex-wrap items-center gap-5">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold text-[10px]">
-                ✓
-              </div>
-              <span className="text-zinc-300 font-medium">Available (Click to view times)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-zinc-950 border border-dashed border-zinc-800 flex items-center justify-center text-zinc-600 text-[10px]">
-                +
-              </div>
-              <span className="text-zinc-400">Empty (Click to create slot)</span>
-            </div>
-          </div>
-          <div className="text-zinc-400 text-[11px] flex items-center gap-1.5">
-            <Info className="h-3.5 w-3.5 text-blue-400" />
-            <span>Grid reflects real unbooked slots for the next 7 days</span>
-          </div>
-        </div>
-
-        {/* Weekly Real Schedule Grid */}
-        <Card className="overflow-hidden shadow-2xl border-zinc-800">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse min-w-[840px]">
-              <thead className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-400">
-                <tr>
-                  <th className="p-3.5 w-28 border-r border-zinc-800 text-center font-semibold text-xs uppercase tracking-wider bg-zinc-900/90">
-                    <Clock className="h-4 w-4 mx-auto text-blue-400" />
-                  </th>
-                  {DAYS_OF_WEEK.map((day) => {
-                    const dayInfo = next7DaysInfo.map[day];
-                    return (
-                      <th
-                        key={day}
-                        className={`p-3 text-center border-r border-zinc-800 last:border-r-0 ${
-                          dayInfo?.isToday ? 'bg-blue-950/20' : ''
-                        }`}
-                      >
-                        <div className="font-semibold text-zinc-200 text-xs">{day}</div>
-                        <div className="text-[11px] font-mono text-zinc-400 font-normal mt-0.5">
-                          {dayInfo ? dayInfo.displayDate : ''}
-                          {dayInfo?.isToday && (
-                            <span className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-blue-500/20 text-blue-400 font-medium border border-blue-500/30">
-                              Today
-                            </span>
-                          )}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-zinc-800/80">
-                {GRID_HOURS.map((hour) => (
-                  <tr key={hour} className="hover:bg-zinc-800/20 transition-colors">
-                    {/* Hour Row Label */}
-                    <td className="p-3 font-mono text-xs font-semibold text-zinc-400 border-r border-zinc-800 text-center bg-zinc-900/40">
-                      {hour}
-                    </td>
-
-                    {/* Day Cells */}
-                    {DAYS_OF_WEEK.map((day) => {
-                      const key = `${day}-${hour}`;
-                      const cellSlots = slotsByCell[key] || [];
-                      const isOccupied = cellSlots.length > 0;
-                      const dayInfo = next7DaysInfo.map[day];
-
-                      // Build tooltip text for hover
-                      const hoverTooltipText = isOccupied
-                        ? `${cellSlots.length} slot(s) on ${day} (${dayInfo?.displayDate}):\n` +
-                          cellSlots.map((s) => `• ${s.start_time} - ${s.end_time}`).join('\n')
-                        : `Click to add a slot for ${day} at ${hour}`;
-
-                      return (
-                        <td
-                          key={key}
-                          className="p-1.5 border-r border-zinc-800 last:border-r-0 align-middle"
-                        >
-                          {isOccupied ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOccupiedCellClick(day, hour, cellSlots)}
-                              title={hoverTooltipText}
-                              className="w-full h-11 px-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-400 transition-all flex flex-col items-center justify-center gap-0.5 group shadow-sm active:scale-95"
-                            >
-                              <span className="text-xs font-bold flex items-center gap-1">
-                                <CheckCircle2 className="h-3 w-3" />
-                                {cellSlots.length > 1 ? `Available (${cellSlots.length})` : 'Available'}
-                              </span>
-                              <span className="text-[10px] text-emerald-400/80 font-mono truncate max-w-full">
-                                {cellSlots[0].start_time}
-                              </span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleEmptyCellClick(day, hour)}
-                              title={hoverTooltipText}
-                              className="w-full h-11 rounded-lg bg-zinc-950/60 hover:bg-zinc-800/60 border border-dashed border-zinc-800/80 hover:border-zinc-700 text-zinc-600 hover:text-zinc-300 transition-all flex items-center justify-center text-xs group active:scale-95"
-                            >
-                              <span className="group-hover:hidden">—</span>
-                              <span className="hidden group-hover:inline-flex items-center gap-1 text-[11px] text-blue-400 font-medium">
-                                <Plus className="h-3 w-3" /> Add
-                              </span>
-                            </button>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* Modal: Cell Slot Details (when clicking occupied cell) */}
-        {activeCellTooltip && (
-          <Modal
-            isOpen={Boolean(activeCellTooltip)}
-            onClose={() => setActiveCellTooltip(null)}
-            title={`${activeCellTooltip.day} — ${activeCellTooltip.displayDate}`}
-            description={`Consultation slots in the ${activeCellTooltip.hour} window`}
-            maxWidth="max-w-md"
-          >
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Active Consultation Slots ({activeCellTooltip.slots.length})
-                </h4>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {activeCellTooltip.slots.map((slot) => (
-                    <div
-                      key={slot.id}
-                      className="flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-emerald-400" />
-                          <span className="text-sm font-semibold text-zinc-100 font-mono">
-                            {slot.start_time} - {slot.end_time}
-                          </span>
-                        </div>
-                        <span className="inline-flex items-center text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                          Available for Booking
-                        </span>
-                      </div>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeleteSlot(slot.id)}
-                        disabled={deletingId === slot.id}
-                        isLoading={deletingId === slot.id}
-                        className="text-zinc-400 hover:text-red-400 hover:bg-red-500/10 h-8 px-2.5 text-xs"
-                        title="Delete slot"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    const targetDay = activeCellTooltip.day;
-                    const targetHour = activeCellTooltip.hour;
-                    setActiveCellTooltip(null);
-                    handleEmptyCellClick(targetDay, targetHour);
-                  }}
-                  className="text-xs gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add Another Slot
-                </Button>
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setActiveCellTooltip(null)}
-                  className="text-xs text-zinc-400 hover:text-zinc-200"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </Modal>
-        )}
+        {/* 24-Hour 48-Row Availability Grid */}
+        <AvailabilityGrid
+          schedules={schedules}
+          onOpenAddModal={(date, startTime, duration) => {
+            setModalDate(date);
+            setModalStartTime(startTime);
+            setModalDuration(duration || 30);
+            setIsAddModalOpen(true);
+          }}
+          onDeleteSlot={handleDeleteSlot}
+          deletingId={deletingId}
+        />
 
         {/* Section: Real Schedules Table Below Grid */}
         <div className="space-y-4 pt-4 border-t border-zinc-800/80">
@@ -537,7 +280,7 @@ export default function AvailabilityPage() {
         onSuccess={() => reload()}
         initialDate={modalDate}
         initialStartTime={modalStartTime}
-        initialDuration={30}
+        initialDuration={modalDuration}
       />
     </div>
   );

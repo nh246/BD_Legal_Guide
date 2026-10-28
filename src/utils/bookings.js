@@ -1,5 +1,5 @@
 /**
- * Shared booking helpers for BD Legal Guide AI.
+ * Shared booking helpers for Legal Bridge.
  * Used across ClientDashboard, MyBookingsPage, MyCasesPage, and Lawyer surfaces.
  */
 
@@ -122,17 +122,20 @@ function formatMinutesToTime(totalMinutes) {
  * If stored end_time equals start_time, or is invalid, computes end = start + 30 minutes.
  */
 export function formatSlot(b) {
-  if (!b) return '10:00 AM - 10:30 AM (30m)';
+  if (!b) return 'Schedule pending';
 
   const rawStart = b.start_time || b.startTime || b.time || b.scheduled_time || b.schedule?.start_time || '';
   let rawEnd = b.end_time || b.endTime || b.schedule?.end_time || '';
 
   // Clean raw inputs
-  const cleanStart = String(rawStart).replace(/\(.*?\)/g, '').trim();
-  let cleanEnd = String(rawEnd).replace(/\(.*?\)/g, '').trim();
+  const cleanStart = String(rawStart || '').replace(/\(.*?\)/g, '').trim();
+  let cleanEnd = String(rawEnd || '').replace(/\(.*?\)/g, '').trim();
 
   let startMins = parseTimeToMinutes(cleanStart);
   if (startMins === null) {
+    if (!cleanStart && !cleanEnd) {
+      return 'Schedule pending';
+    }
     startMins = 10 * 60; // 10:00 AM default
   }
 

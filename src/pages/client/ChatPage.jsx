@@ -116,17 +116,26 @@ export default function ChatPage() {
     fetchUsage();
   }, [token]);
 
-  // Fetch active LLM config on mount
+  const isAdminOrMod = user?.role === 'admin' || user?.role === 'moderator';
+
+  // Fetch active LLM config on mount for admin/moderator only
   useEffect(() => {
-    api.get('/admin/llm-config')
-      .then((res) => setLlmConfig(res.data))
-      .catch(() => {
-        setLlmConfig({
-          model_name: 'gemini-1.5-flash',
-          disclaimer: 'This information is for educational purposes and not a substitute for professional legal advice under Bangladesh law.'
+    if (isAdminOrMod) {
+      api.get('/admin/llm-config')
+        .then((res) => setLlmConfig(res.data))
+        .catch(() => {
+          setLlmConfig({
+            model_name: 'gemini-2.5-flash',
+            disclaimer: 'This information is for educational purposes and not a substitute for professional legal advice under Bangladesh law.'
+          });
         });
+    } else {
+      setLlmConfig({
+        model_name: 'gemini-2.5-flash',
+        disclaimer: 'This information is for educational purposes and not a substitute for professional legal advice under Bangladesh law.'
       });
-  }, []);
+    }
+  }, [isAdminOrMod]);
 
   // Load chat sessions
   const loadSessions = async () => {
@@ -392,7 +401,7 @@ export default function ChatPage() {
     }
   };
 
-  const currentModelDisplay = llmConfig?.model_name || llmConfig?.model || 'Gemini 1.5 Flash';
+  const currentModelDisplay = llmConfig?.model_name || llmConfig?.model || 'gemini-2.5-flash';
   const disclaimerText = llmConfig?.disclaimer || 'This information is for educational purposes and not a substitute for professional legal advice.';
 
   return (
@@ -462,11 +471,19 @@ export default function ChatPage() {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <span className="text-xs font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <Cpu className="h-3.5 w-3.5 text-blue-400" />
-              <span>Model: <strong className="text-zinc-100">{currentModelDisplay}</strong></span>
-            </span>
+            {isAdminOrMod ? (
+              <span className="text-xs font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <Cpu className="h-3.5 w-3.5 text-blue-400" />
+                <span>Model: <strong className="text-zinc-100">{currentModelDisplay}</strong></span>
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-zinc-200 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+                <span>AI Legal Assistant</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5">

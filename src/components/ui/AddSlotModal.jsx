@@ -5,21 +5,18 @@ import Button from './Button';
 import api, { getErrorMessage } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
 
-export const START_TIME_OPTIONS = [
-  '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
-  '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
-  '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM',
-  '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM',
-  '04:00 PM', '04:30 PM', '05:00 PM', '05:30 PM',
-  '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM',
-  '08:00 PM', '08:30 PM',
-];
+// 24-hour options in 30-minute intervals (00:00 to 23:30)
+export const START_TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
+  const m = (i % 2) * 30;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+});
 
 export const DURATION_OPTIONS = [
-  { value: 30, label: '30 minutes' },
-  { value: 45, label: '45 minutes' },
-  { value: 60, label: '60 minutes (1 hr)' },
-  { value: 90, label: '90 minutes (1.5 hrs)' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 hour' },
+  { value: 90, label: '1.5 hours' },
+  { value: 120, label: '2 hours' },
 ];
 
 export const getTodayIso = () => {
@@ -39,32 +36,42 @@ export const getMaxDateIso = () => {
   return `${year}-${month}-${day}`;
 };
 
+export function normalizeTimeTo24H(timeStr) {
+  if (!timeStr) return '09:00';
+  const s = String(timeStr).trim();
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const m = parseInt(m12[2], 10);
+    const ampm = m12[3].toUpperCase();
+    if (ampm === 'AM') {
+      if (h === 12) h = 0;
+    } else {
+      if (h !== 12) h += 12;
+    }
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    const m = parseInt(m24[2], 10);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  return s;
+}
+
 export function computeEndTime(startTimeStr, durationMinutes) {
   if (!startTimeStr) return '';
-  const match = startTimeStr.match(/^(\d{2}):(\d{2})\s*(AM|PM)$/i);
-  if (!match) return '';
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const meridiem = match[3].toUpperCase();
+  const normalized = normalizeTimeTo24H(startTimeStr);
+  const parts = normalized.split(':');
+  if (parts.length < 2) return '';
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const totalMins = h * 60 + m + parseInt(durationMinutes, 10);
 
-  if (meridiem === 'AM') {
-    if (hours === 12) hours = 0;
-  } else {
-    if (hours !== 12) hours += 12;
-  }
-
-  const totalMinutes = hours * 60 + minutes + parseInt(durationMinutes, 10);
-  const endTotalMinutes = totalMinutes % (24 * 60);
-  const endHours24 = Math.floor(endTotalMinutes / 60);
-  const endMinutes = endTotalMinutes % 60;
-
-  let endHours12 = endHours24 % 12;
-  if (endHours12 === 0) endHours12 = 12;
-  const endMeridiem = endHours24 >= 12 ? 'PM' : 'AM';
-
-  const hhStr = String(endHours12).padStart(2, '0');
-  const mmStr = String(endMinutes).padStart(2, '0');
-  return `${hhStr}:${mmStr} ${endMeridiem}`;
+  const endHours = Math.floor(totalMins / 60) % 24;
+  const endMins = totalMins % 60;
+  return `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`;
 }
 
 export default function AddSlotModal({
@@ -72,14 +79,14 @@ export default function AddSlotModal({
   onClose,
   onSuccess,
   initialDate = '',
-  initialStartTime = '10:00 AM',
+  initialStartTime = '09:00',
   initialDuration = 30,
 }) {
   const todayIso = useMemo(() => getTodayIso(), []);
   const maxDateIso = useMemo(() => getMaxDateIso(), []);
 
   const [date, setDate] = useState(initialDate || todayIso);
-  const [startTime, setStartTime] = useState(initialStartTime || '10:00 AM');
+  const [startTime, setStartTime] = useState(() => normalizeTimeTo24H(initialStartTime || '09:00'));
   const [duration, setDuration] = useState(initialDuration || 30);
   const [dateError, setDateError] = useState('');
   const [generalError, setGeneralError] = useState('');
@@ -89,8 +96,9 @@ export default function AddSlotModal({
   useEffect(() => {
     if (isOpen) {
       setDate(initialDate || todayIso);
+      const normalized = normalizeTimeTo24H(initialStartTime || '09:00');
       setStartTime(
-        START_TIME_OPTIONS.includes(initialStartTime) ? initialStartTime : '10:00 AM'
+        START_TIME_OPTIONS.includes(normalized) ? normalized : '09:00'
       );
       setDuration(initialDuration || 30);
       setDateError('');
@@ -219,12 +227,13 @@ export default function AddSlotModal({
               <Clock className="h-3.5 w-3.5 text-blue-400" /> Start Time
             </label>
             <select
+              id="add-slot-start-time"
               value={startTime}
               onChange={(e) => {
                 setStartTime(e.target.value);
                 if (generalError) setGeneralError('');
               }}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none cursor-pointer"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none cursor-pointer font-mono"
             >
               {START_TIME_OPTIONS.map((t) => (
                 <option key={t} value={t} className="bg-zinc-900 text-zinc-100 py-1">
@@ -237,12 +246,13 @@ export default function AddSlotModal({
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-zinc-300">Duration</label>
             <select
+              id="add-slot-duration"
               value={duration}
               onChange={(e) => {
                 setDuration(Number(e.target.value));
                 if (generalError) setGeneralError('');
               }}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none cursor-pointer"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none cursor-pointer font-mono"
             >
               {DURATION_OPTIONS.map((d) => (
                 <option key={d.value} value={d.value} className="bg-zinc-900 text-zinc-100 py-1">
@@ -259,7 +269,7 @@ export default function AddSlotModal({
             <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></div>
             <span>Calculated End Time</span>
           </div>
-          <span className="text-sm font-bold text-zinc-100 font-mono tracking-tight bg-zinc-900 px-2.5 py-1 rounded-md border border-zinc-800">
+          <span id="add-slot-end-time" className="text-sm font-bold text-zinc-100 font-mono tracking-tight bg-zinc-900 px-2.5 py-1 rounded-md border border-zinc-800">
             Ends at {computedEndTime}
           </span>
         </div>
@@ -285,6 +295,7 @@ export default function AddSlotModal({
           </Button>
           <Button
             type="submit"
+            id="add-slot-submit"
             isLoading={submitting}
             disabled={submitting}
             className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm"

@@ -1272,7 +1272,7 @@ export default function PricingPage() {
                 <Scale className="h-5 w-5" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-zinc-200">BD Legal Compliance</h4>
+                <h4 className="text-sm font-semibold text-zinc-200">Bangladesh Legal Compliance</h4>
                 <p className="text-xs text-zinc-400 mt-1">
                   Built specifically around Bangladesh penal laws, court acts, and legal procedures.
                 </p>

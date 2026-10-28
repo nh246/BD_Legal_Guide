@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 
 import Navbar from './components/layout/Navbar';
@@ -11,6 +11,7 @@ import LandingPage from './pages/public/LandingPage';
 import PricingPage from './pages/public/PricingPage';
 import LoginPage from './pages/public/LoginPage';
 import RegisterPage from './pages/public/RegisterPage';
+import ResetPasswordPage from './pages/public/ResetPasswordPage';
 
 // Client Pages
 import ClientDashboard from './pages/client/ClientDashboard';
@@ -27,7 +28,6 @@ import LawyerDashboard from './pages/lawyer/LawyerDashboard';
 import LawyerOnboarding from './pages/lawyer/LawyerOnboarding';
 import AvailabilityPage from './pages/lawyer/AvailabilityPage';
 import BookingDetailPage from './pages/lawyer/BookingDetailPage';
-import LawyerProfileEditPage from './pages/lawyer/LawyerProfilePage';
 
 // Admin Pages
 import AdminLayout from './components/layout/AdminLayout';
@@ -39,6 +39,8 @@ import AdminQueries from './pages/admin/AdminQueries';
 import AdminLLMConfig from './pages/admin/AdminLLMConfig';
 import AdminPayments from './pages/admin/AdminPayments';
 import AdminAuditLogs from './pages/admin/AdminAuditLogs';
+
+import ErrorBoundary from './components/ErrorBoundary';
 
 function FirmComingSoon() {
   return (
@@ -66,67 +68,109 @@ function NotFound() {
   );
 }
 
+function PageTitleManager() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const path = location.pathname;
+    let pageName = 'Your Bridge to Justice';
+
+    if (path === '/') pageName = 'Your Bridge to Justice';
+    else if (path === '/login') pageName = 'Log In';
+    else if (path === '/register') pageName = 'Create Account';
+    else if (path === '/reset-password') pageName = 'Reset Password';
+    else if (path === '/pricing') pageName = 'Transparent Pricing';
+    else if (path === '/client/chat') pageName = 'AI Legal Assistant';
+    else if (path === '/client/lawyers') pageName = 'Verified Lawyers Directory';
+    else if (path.startsWith('/client/lawyers/')) pageName = 'Lawyer Profile';
+    else if (path === '/client/cases') pageName = 'Case Board Marketplace';
+    else if (path === '/client/bookings') pageName = 'My Consultations';
+    else if (path === '/client') pageName = 'Client Dashboard';
+    else if (path === '/lawyer/signup') pageName = 'Join as an Advocate';
+    else if (path === '/lawyer/availability') pageName = 'Availability Schedule';
+    else if (path.startsWith('/lawyer')) pageName = 'Lawyer Dashboard';
+    else if (path === '/admin/users') pageName = 'Admin — Users';
+    else if (path === '/admin/lawyers') pageName = 'Admin — Lawyers';
+    else if (path === '/admin/moderators') pageName = 'Admin — Moderators';
+    else if (path === '/admin/queries') pageName = 'Admin — AI Queries';
+    else if (path === '/admin/payments') pageName = 'Admin — Payments';
+    else if (path === '/admin/audit-logs') pageName = 'Admin — Audit Logs';
+    else if (path === '/admin/llm-config') pageName = 'Admin — LLM Config';
+    else if (path.startsWith('/admin')) pageName = 'Admin Dashboard';
+
+    document.title = `Legal Bridge — ${pageName}`;
+  }, [location.pathname]);
+
+  return null;
+}
+
 function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-blue-500/30">
+      <PageTitleManager />
       <Navbar />
 
       <main>
-        <Routes>
-          {/* Public */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/signup" element={<Navigate to="/register" replace />} />
-          <Route path="/chat" element={<Navigate to="/client/chat" replace />} />
-          <Route path="/lawyers" element={<Navigate to="/client/lawyers" replace />} />
-          <Route path="/dashboard" element={<Navigate to="/client" replace />} />
-          <Route path="/firm/*" element={<FirmComingSoon />} />
+        <ErrorBoundary name="Main Route Tree">
+          <Routes>
+            {/* Public */}
+            <Route path="/" element={<ErrorBoundary name="Landing Page"><LandingPage /></ErrorBoundary>} />
+            <Route path="/pricing" element={<ErrorBoundary name="Pricing Page"><PricingPage /></ErrorBoundary>} />
+            <Route path="/login" element={<ErrorBoundary name="Login Page"><LoginPage /></ErrorBoundary>} />
+            <Route path="/register" element={<ErrorBoundary name="Register Page"><RegisterPage /></ErrorBoundary>} />
+            <Route path="/reset-password" element={<ErrorBoundary name="Reset Password Page"><ResetPasswordPage /></ErrorBoundary>} />
+            <Route path="/signup" element={<Navigate to="/register" replace />} />
+            <Route path="/chat" element={<Navigate to="/client/chat" replace />} />
+            <Route path="/lawyers" element={<Navigate to="/client/lawyers" replace />} />
+            <Route path="/dashboard" element={<Navigate to="/client" replace />} />
+            <Route path="/firm/*" element={<ErrorBoundary name="Firm Module"><FirmComingSoon /></ErrorBoundary>} />
 
-          {/* Client */}
-          <Route path="/client" element={<RequireAuth roles={['user', 'admin']} />}>
-            <Route index element={<ClientDashboard />} />
-            <Route path="chat" element={<ChatPage />} />
-            <Route path="chat/:sessionId" element={<ChatPage />} />
-            <Route path="lawyers" element={<LawyerDirectoryPage />} />
-            <Route path="lawyers/:id" element={<LawyerProfilePage />} />
-            <Route path="book/:id" element={<BookingPage />} />
-            <Route path="bookings" element={<MyBookingsPage />} />
-            <Route path="cases" element={<MyCasesPage />} />
-            <Route path="consultation/:id" element={<ConsultationChatPage />} />
-          </Route>
+            {/* Client */}
+            <Route path="/client" element={<RequireAuth roles={['user', 'admin']} />}>
+              <Route index element={<ErrorBoundary name="Client Dashboard"><ClientDashboard /></ErrorBoundary>} />
+              <Route path="chat" element={<ErrorBoundary name="Client Chat"><ChatPage /></ErrorBoundary>} />
+              <Route path="chat/:sessionId" element={<ErrorBoundary name="Client Chat"><ChatPage /></ErrorBoundary>} />
+              <Route path="lawyers" element={<ErrorBoundary name="Lawyer Directory"><LawyerDirectoryPage /></ErrorBoundary>} />
+              <Route path="lawyers/:id" element={<ErrorBoundary name="Lawyer Profile"><LawyerProfilePage /></ErrorBoundary>} />
+              <Route path="book/:id" element={<ErrorBoundary name="Booking Page"><BookingPage /></ErrorBoundary>} />
+              <Route path="bookings" element={<ErrorBoundary name="My Bookings"><MyBookingsPage /></ErrorBoundary>} />
+              <Route path="cases" element={<ErrorBoundary name="My Cases"><MyCasesPage /></ErrorBoundary>} />
+              <Route path="consultation/:id" element={<ErrorBoundary name="Consultation Chat"><ConsultationChatPage /></ErrorBoundary>} />
+            </Route>
 
-          {/* Lawyer */}
-          <Route path="/lawyer" element={<RequireAuth roles={['lawyer', 'admin']} />}>
-            <Route index element={<LawyerDashboard />} />
-            <Route path="onboarding" element={<LawyerOnboarding />} />
-            <Route path="profile" element={<LawyerProfileEditPage />} />
-            <Route path="availability" element={<AvailabilityPage />} />
-            <Route path="requests/:id" element={<BookingDetailPage />} />
-          </Route>
+            {/* Lawyer */}
+            <Route path="/lawyer" element={<RequireAuth roles={['lawyer', 'admin']} />}>
+              <Route index element={<ErrorBoundary name="Lawyer Dashboard"><LawyerDashboard /></ErrorBoundary>} />
+              <Route path="onboarding" element={<ErrorBoundary name="Lawyer Onboarding"><LawyerOnboarding /></ErrorBoundary>} />
+              <Route path="profile" element={<Navigate to="/lawyer?tab=profile" replace />} />
+              <Route path="availability" element={<ErrorBoundary name="Availability Management"><AvailabilityPage /></ErrorBoundary>} />
+              <Route path="requests/:id" element={<ErrorBoundary name="Booking Detail"><BookingDetailPage /></ErrorBoundary>} />
+            </Route>
 
-          {/* Admin */}
-          <Route
-            path="/admin"
-            element={
-              <RequireAuth roles={['admin', 'moderator']}>
-                <AdminLayout />
-              </RequireAuth>
-            }
-          >
-            <Route index element={<AdminOverview />} />
-            <Route path="users" element={<AdminUsers />} />
-            <Route path="moderators" element={<AdminModerators />} />
-            <Route path="lawyers" element={<AdminLawyers />} />
-            <Route path="queries" element={<AdminQueries />} />
-            <Route path="llm-config" element={<AdminLLMConfig />} />
-            <Route path="payments" element={<AdminPayments />} />
-            <Route path="audit-logs" element={<AdminAuditLogs />} />
-          </Route>
+            {/* Admin */}
+            <Route
+              path="/admin"
+              element={
+                <RequireAuth roles={['admin', 'moderator']}>
+                  <ErrorBoundary name="Admin Portal">
+                    <AdminLayout />
+                  </ErrorBoundary>
+                </RequireAuth>
+              }
+            >
+              <Route index element={<ErrorBoundary name="Admin Overview"><AdminOverview /></ErrorBoundary>} />
+              <Route path="users" element={<ErrorBoundary name="User Management"><AdminUsers /></ErrorBoundary>} />
+              <Route path="moderators" element={<ErrorBoundary name="Moderator Management"><AdminModerators /></ErrorBoundary>} />
+              <Route path="lawyers" element={<ErrorBoundary name="Lawyer Verification"><AdminLawyers /></ErrorBoundary>} />
+              <Route path="queries" element={<ErrorBoundary name="Platform Queries"><AdminQueries /></ErrorBoundary>} />
+              <Route path="llm-config" element={<ErrorBoundary name="LLM Configuration"><AdminLLMConfig /></ErrorBoundary>} />
+              <Route path="payments" element={<ErrorBoundary name="Payment Monitoring"><AdminPayments /></ErrorBoundary>} />
+              <Route path="audit-logs" element={<ErrorBoundary name="Audit Logs"><AdminAuditLogs /></ErrorBoundary>} />
+            </Route>
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+            <Route path="*" element={<ErrorBoundary name="Page Not Found"><NotFound /></ErrorBoundary>} />
+          </Routes>
+        </ErrorBoundary>
       </main>
 
       <Toaster />

@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 process.env.RUST_BACKTRACE = '1'
 process.env.RAYON_NUM_THREADS = process.env.RAYON_NUM_THREADS || '1'
+process.env.ROLLDOWN_WORKERS = '1'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -13,6 +14,8 @@ export default defineConfig({
   ],
   build: {
     minify: false,
+    cssMinify: false,
+    sourcemap: false,
   },
   server: {
     proxy: {

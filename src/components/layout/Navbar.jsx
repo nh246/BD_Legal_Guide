@@ -122,7 +122,7 @@ export default function Navbar() {
   const isLawyers = pathname === '/client/lawyers' || pathname.startsWith('/client/lawyers') || pathname.startsWith('/client/book') || pathname === '/lawyers';
   const isPricing = pathname === '/pricing' || pathname.startsWith('/pricing');
   const isAvailability = pathname.startsWith('/lawyer/availability');
-  const isProfile = pathname.startsWith('/lawyer/profile');
+  const isProfile = pathname.startsWith('/lawyer/profile') || (pathname === '/lawyer' && location.search.includes('tab=profile'));
 
   const isUserPro = Boolean(
     user?.is_pro ||
@@ -171,7 +171,7 @@ export default function Navbar() {
           >
             <Scale className="h-6 w-6 text-blue-500 transition-transform group-hover:scale-105" />
             <span className="font-bold text-lg text-zinc-50 tracking-tight">
-              BD <span className="bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent">LegalAI</span>
+              Legal <span className="bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent">Bridge</span>
             </span>
           </Link>
 
@@ -265,7 +265,7 @@ export default function Navbar() {
 
                 <Link
                   id="nav-link-profile"
-                  to="/lawyer/profile"
+                  to="/lawyer?tab=profile"
                   className={getLinkClasses(isProfile)}
                 >
                   <User className="h-4 w-4" />
@@ -498,7 +498,7 @@ export default function Navbar() {
                 <span>Availability</span>
               </Link>
               <Link
-                to="/lawyer/profile"
+                to="/lawyer?tab=profile"
                 className={`w-full ${getLinkClasses(isProfile)}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
