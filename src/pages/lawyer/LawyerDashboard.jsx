@@ -522,12 +522,6 @@ export default function LawyerDashboard() {
   const availableSlots = futureSlots.filter((s) => !s.is_booked);
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0);
 
-  useEffect(() => {
-    if (selectedCitizen && threadEndRef.current) {
-      threadEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [threadMessages, selectedCitizen]);
-
   // Periodic polling when inbox tab is active
   useEffect(() => {
     if (activeTab !== 'inbox') return;
