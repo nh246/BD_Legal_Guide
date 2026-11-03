@@ -16,14 +16,14 @@ export default function RequireAuth({ roles = [], children }) {
 
   useEffect(() => {
     let active = true;
-    if (!user && token) {
+    if (token) {
       fetchMe().finally(() => active && setChecking(false));
     } else {
       setChecking(false);
     }
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token]);
 
   const denied = Boolean(user && roles.length > 0 && !roles.includes(user.role));
 

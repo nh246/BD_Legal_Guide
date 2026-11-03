@@ -910,8 +910,15 @@ export default function LawyerDashboard() {
       };
 
       await api.put('/lawyer/me', payload);
+      const trimmedName = profileFullName.trim();
+      if (trimmedName) {
+        useAuthStore.getState().updateUser({ full_name: trimmedName, name: trimmedName });
+      }
       toast('Profile information updated successfully!', 'success');
       await reloadLawyerProfile();
+      try {
+        await useAuthStore.getState().fetchMe();
+      } catch {}
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to update profile'), 'error');
     } finally {
@@ -1007,7 +1014,7 @@ export default function LawyerDashboard() {
     );
   }
 
-  const lawyerName = user?.full_name || 'Advocate';
+  const lawyerName = lawyerProfile?.name || lawyerProfile?.full_name || user?.full_name || 'Advocate';
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-zinc-950 p-4 md:p-8">
@@ -2507,14 +2514,26 @@ export default function LawyerDashboard() {
               {/* Card 3: Professional Practice Details */}
               <Card>
                 <CardContent className="p-6 space-y-6">
-                  <div className="pb-4 border-b border-zinc-800">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="h-5 w-5 text-blue-500" />
-                      <h3 className="text-lg font-bold text-zinc-50">Professional Practice Details</h3>
+                  <div className="pb-4 border-b border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-5 w-5 text-blue-500" />
+                        <h3 className="text-lg font-bold text-zinc-50">Professional Practice Details</h3>
+                      </div>
+                      <p className="text-sm text-zinc-400 mt-1">
+                        Keep your professional information up to date so clients can find your profile in searches.
+                      </p>
                     </div>
-                    <p className="text-sm text-zinc-400 mt-1">
-                      Keep your professional information up to date so clients can find your profile in searches.
-                    </p>
+                    <Button
+                      type="button"
+                      id="btn-save-practice-details"
+                      onClick={handleSaveProfile}
+                      isLoading={isSavingProfile}
+                      disabled={isSavingProfile}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs px-4 py-2 shrink-0 self-start sm:self-auto shadow-sm"
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1.5" /> Save Changes
+                    </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

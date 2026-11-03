@@ -156,8 +156,12 @@ export default function Navbar() {
         : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
     }`;
 
-  const displayName = user?.full_name || user?.name || user?.email || 'User';
-  const avatarLetter = (user?.full_name || user?.name || user?.email || 'U')[0].toUpperCase();
+  const displayName = (user?.role === 'lawyer' && (lawyerProfile?.name || lawyerProfile?.full_name))
+    || user?.full_name
+    || user?.name
+    || user?.email
+    || 'User';
+  const avatarLetter = (displayName || 'U')[0].toUpperCase();
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-zinc-950/85 backdrop-blur-md border-b border-zinc-800">
