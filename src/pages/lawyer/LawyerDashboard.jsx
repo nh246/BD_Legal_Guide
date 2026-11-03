@@ -155,7 +155,7 @@ export default function LawyerDashboard() {
   const [searchParams] = useSearchParams();
   const { data: reqData, loading: reqLoading, error: reqError, reload: reloadReq } = useApi('/lawyer/requests');
   const { data: schedData, loading: schedLoading, error: schedError, reload: reloadSchedules } = useApi('/lawyer/schedules');
-  const { data: inboxData, loading: inboxLoading, error: inboxError, reload: reloadInbox } = useApi('/messages/lawyer/inbox');
+  const { data: inboxData, loading: inboxLoading, error: inboxError, reload: reloadInbox, setData: setInboxData } = useApi('/messages/lawyer/inbox');
   const { data: assetsData, loading: assetsLoading, reload: reloadAssets } = useApi('/profile/assets');
   const { data: lawyerProfile, loading: profileLoading, reload: reloadLawyerProfile } = useApi(
     user?.role === 'lawyer' || user?.role === 'admin' ? '/lawyer/me' : null
@@ -522,11 +522,20 @@ export default function LawyerDashboard() {
   const availableSlots = futureSlots.filter((s) => !s.is_booked);
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0);
 
+  const silentReloadInbox = useCallback(async () => {
+    try {
+      const res = await api.get('/messages/lawyer/inbox');
+      if (res.data) setInboxData(res.data);
+    } catch {
+      // background silent refresh
+    }
+  }, [setInboxData]);
+
   // Periodic polling when inbox tab is active
   useEffect(() => {
     if (activeTab !== 'inbox') return;
     const interval = setInterval(() => {
-      reloadInbox();
+      silentReloadInbox();
       if (selectedCitizen) {
         api.get(`/messages/lawyer/thread/${selectedCitizen.user_id}`)
           .then((res) => {
@@ -535,9 +544,9 @@ export default function LawyerDashboard() {
           })
           .catch(() => {});
       }
-    }, 4000);
+    }, 6000);
     return () => clearInterval(interval);
-  }, [activeTab, selectedCitizen]);
+  }, [activeTab, selectedCitizen, silentReloadInbox]);
 
   const handleSelectCitizen = async (citizen) => {
     setSelectedCitizen(citizen);
@@ -567,7 +576,7 @@ export default function LawyerDashboard() {
       const res = await api.get(`/messages/lawyer/thread/${citizen.user_id}`);
       const list = res.data?.thread || res.data?.messages || res.data || [];
       setThreadMessages(Array.isArray(list) ? list : []);
-      reloadInbox();
+      silentReloadInbox();
     } catch (err) {
       setThreadError(getErrorMessage(err, 'Failed to load conversation thread.'));
     } finally {
@@ -590,7 +599,7 @@ export default function LawyerDashboard() {
         const updated = await api.get(`/messages/lawyer/thread/${selectedCitizen.user_id}`);
         setThreadMessages(updated.data?.thread || updated.data || []);
       }
-      reloadInbox();
+      silentReloadInbox();
     } catch (err) {
       if (err.response?.status === 403 && err.response.data?.error === 'booking_completed') {
         setIsSelectedClientReadOnly(true);
@@ -1937,9 +1946,9 @@ export default function LawyerDashboard() {
               </Button>
             </div>
 
-            {inboxLoading ? (
+            {inboxLoading && !inboxData ? (
               <LoadingState message="Loading citizen conversations..." />
-            ) : inboxError ? (
+            ) : inboxError && !inboxData ? (
               <ErrorState error={inboxError} onRetry={reloadInbox} />
             ) : conversations.length === 0 ? (
               <EmptyState
