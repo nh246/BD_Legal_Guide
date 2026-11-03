@@ -1237,6 +1237,7 @@ export default function LawyerDashboard() {
           </button>
 
           <button
+            id="tab-inbox"
             onClick={() => setActiveTab('inbox')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'inbox'
@@ -1254,6 +1255,7 @@ export default function LawyerDashboard() {
           </button>
 
           <button
+            id="tab-meetings"
             onClick={() => setActiveTab('meetings')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'meetings'
@@ -1266,6 +1268,7 @@ export default function LawyerDashboard() {
           </button>
 
           <button
+            id="tab-profile"
             onClick={() => setActiveTab('profile')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'profile'
