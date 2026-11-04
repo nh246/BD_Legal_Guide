@@ -31,6 +31,7 @@ import useApi from '../../lib/useApi';
 import api, { asList, getErrorMessage, getAssetUrl } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
 import { toast } from '../../store/useToastStore';
+import ClientSlotPicker from '../../components/ui/ClientSlotPicker';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
@@ -42,8 +43,10 @@ export default function LawyerProfilePage() {
 
   const { data: lawyer, loading, error, reload } = useApi(id ? `/lawyers/${id}` : null);
   const { data: assetsData } = useApi(id ? `/users/${id}/assets` : null);
+  const { data: schedulesData, loading: schedulesLoading } = useApi(id ? `/lawyers/${id}/schedules` : null);
 
   const assets = asList(assetsData, 'assets');
+  const schedules = asList(schedulesData, 'schedules');
   const avatarAsset = assets.find((a) => a.kind === 'avatar');
   const verificationDocs = assets.filter((a) => a.kind === 'verification');
 
@@ -921,48 +924,22 @@ export default function LawyerProfilePage() {
 
             {activeTab === 'availability' && (
               <div className="animate-in fade-in duration-300">
-                <h3 className="text-lg font-semibold text-zinc-50 mb-4 flex items-center gap-2">
-                  <CalendarIcon className="h-5 w-5 text-zinc-500" /> Select a Time Slot
-                </h3>
-
-                <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50">
-                  <table className="w-full text-sm text-center min-w-[600px]">
-                    <thead className="bg-zinc-900 text-zinc-400 border-b border-zinc-800">
-                      <tr>
-                        <th className="p-3 w-20 border-r border-zinc-800">Time</th>
-                        {DAYS.map((day) => (
-                          <th key={day} className="p-3 font-medium">
-                            {day}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {TIMES.map((time) => (
-                        <tr key={time}>
-                          <td className="p-3 text-zinc-500 text-xs border-r border-zinc-800 bg-zinc-900 font-medium">{time}</td>
-                          {DAYS.map((day) => {
-                            const isSelected = selectedSlot?.day === day && selectedSlot?.time === time;
-                            return (
-                              <td key={`${day}-${time}`} className="p-1">
-                                <button
-                                  onClick={() => handleSlotClick(day, time)}
-                                  className={`w-full py-2.5 rounded transition-colors border text-xs font-medium ${
-                                    isSelected
-                                      ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
-                                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer'
-                                  }`}
-                                >
-                                  {isSelected ? 'Selected' : 'Open'}
-                                </button>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
+                    <CalendarIcon className="h-5 w-5 text-blue-400" /> Consultation Availability
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Select an open consultation slot to book an instant 30-minute video session with {lawyer.name}.
+                  </p>
                 </div>
+
+                <ClientSlotPicker
+                  schedules={schedules}
+                  selectedSlot={selectedSlot}
+                  onSelectSlot={(slot) => setSelectedSlot(slot)}
+                  loading={schedulesLoading}
+                  lawyerName={lawyer.name}
+                />
               </div>
             )}
           </div>
@@ -991,9 +968,11 @@ export default function LawyerProfilePage() {
             {selectedSlot ? (
               <div className="bg-blue-600/10 border border-blue-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-                <div>
+                <div className="min-w-0">
                   <div className="text-sm font-semibold text-blue-400 mb-0.5">Selected Time</div>
-                  <div className="text-sm text-zinc-300">{selectedSlot.day}, {selectedSlot.time}</div>
+                  <div className="text-sm text-zinc-300">
+                    {selectedSlot.full_label || `${selectedSlot.day || selectedSlot.date}, ${selectedSlot.time || selectedSlot.start_time}`}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1004,7 +983,10 @@ export default function LawyerProfilePage() {
 
             <button
               disabled={!selectedSlot}
-              onClick={() => navigate(`/client/book/${lawyer.id}?slot=${selectedSlot.day}-${selectedSlot.time}`)}
+              onClick={() => {
+                const slotParam = selectedSlot?.schedule_id || selectedSlot?.id || `${selectedSlot?.day}-${selectedSlot?.time}`;
+                navigate(`/client/book/${lawyer.id}?slot=${slotParam}`);
+              }}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 shadow-lg shadow-blue-500/20"
             >
               Continue to Booking

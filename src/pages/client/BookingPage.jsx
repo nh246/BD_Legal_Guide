@@ -5,8 +5,9 @@ import Button from '../../components/ui/Button';
 import { LoadingState, ErrorState } from '../../components/ui/PageStates';
 import EmptyState from '../../components/ui/EmptyState';
 import useApi from '../../lib/useApi';
-import api, { getErrorMessage } from '../../lib/api';
+import api, { getErrorMessage, asList } from '../../lib/api';
 import CompletePaymentModal from '../../components/ui/CompletePaymentModal';
+import ClientSlotPicker from '../../components/ui/ClientSlotPicker';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
@@ -66,6 +67,10 @@ export default function BookingPage() {
   const navigate = useNavigate();
 
   const { data: lawyer, loading, error, reload } = useApi(id ? `/lawyers/${id}` : null);
+  const { data: schedulesData, loading: schedulesLoading, reload: reloadSchedules } = useApi(
+    id ? `/lawyers/${id}/schedules` : null
+  );
+  const schedules = asList(schedulesData, 'schedules');
 
   const urlSlot = searchParams.get('slot');
 
@@ -81,13 +86,57 @@ export default function BookingPage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   useEffect(() => {
-    if (urlSlot) {
-      const parsed = parseSlotParam(urlSlot);
-      if (parsed) {
-        setSelectedSlot(parsed);
+    if (!urlSlot) return;
+
+    // 1. If schedules are loaded, check direct schedule ID match
+    if (schedules && schedules.length > 0) {
+      const match = schedules.find((s) => s.id === urlSlot || s.schedule_id === urlSlot);
+      if (match) {
+        const dateObj = new Date(match.date + 'T00:00:00');
+        const weekday = !isNaN(dateObj.getTime())
+          ? dateObj.toLocaleDateString('en-US', { weekday: 'short' })
+          : 'Day';
+        setSelectedSlot({
+          schedule_id: match.id,
+          id: match.id,
+          date: match.date,
+          start_time: match.start_time,
+          end_time: match.end_time || '',
+          day: weekday,
+          time: `${match.start_time}${match.end_time ? ' - ' + match.end_time : ''}`,
+          full_label: `${weekday}, ${match.date} (${match.start_time}${
+            match.end_time ? ' - ' + match.end_time : ''
+          })`,
+        });
+        return;
       }
     }
-  }, [urlSlot]);
+
+    // 2. Parse legacy slot param
+    const parsed = parseSlotParam(urlSlot);
+    if (parsed) {
+      if (schedules && schedules.length > 0) {
+        const slotByTime = schedules.find((s) => {
+          const d = new Date(s.date + 'T00:00:00');
+          const wDay = d.toLocaleDateString('en-US', { weekday: 'short' });
+          return (wDay === parsed.day || s.date === parsed.day) && s.start_time === parsed.time;
+        });
+        if (slotByTime) {
+          setSelectedSlot({
+            schedule_id: slotByTime.id,
+            id: slotByTime.id,
+            date: slotByTime.date,
+            start_time: slotByTime.start_time,
+            end_time: slotByTime.end_time || '',
+            day: parsed.day,
+            time: `${slotByTime.start_time}${slotByTime.end_time ? ' - ' + slotByTime.end_time : ''}`,
+          });
+          return;
+        }
+      }
+      setSelectedSlot(parsed);
+    }
+  }, [urlSlot, schedules]);
 
   if (loading) {
     return (
@@ -183,7 +232,7 @@ export default function BookingPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full mb-8 text-left space-y-3">
           <div className="flex items-center gap-3 text-sm text-zinc-300">
             <Calendar className="h-5 w-5 text-blue-500 shrink-0" />
-            <span>{selectedSlot?.day || selectedSlot?.date}, {selectedSlot?.time || selectedSlot?.start_time} (30 mins)</span>
+            <span>{selectedSlot?.full_label || `${selectedSlot?.day || selectedSlot?.date}, ${selectedSlot?.time || selectedSlot?.start_time}`} (30 mins)</span>
           </div>
           <div className="flex items-center gap-3 text-sm text-zinc-300">
             <ShieldCheck className="h-5 w-5 text-blue-500 shrink-0" />
@@ -281,47 +330,20 @@ export default function BookingPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 mb-6">
           {step === 1 && (
             <div className="space-y-4 animate-in fade-in duration-300">
-              <h2 className="text-xl font-semibold text-zinc-50 mb-2">Select a Time Slot</h2>
-              <p className="text-sm text-zinc-400 mb-6">All slots are 30 minutes in duration and conducted via secure video call.</p>
-
-              <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950">
-                <table className="w-full text-sm text-center min-w-[500px]">
-                  <thead className="bg-zinc-900 text-zinc-400 border-b border-zinc-800">
-                    <tr>
-                      <th className="p-3 w-16 border-r border-zinc-800">Time</th>
-                      {DAYS.map((day) => (
-                        <th key={day} className="p-3 font-medium">
-                          {day}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800">
-                    {TIMES.map((time) => (
-                      <tr key={time}>
-                        <td className="p-3 text-zinc-500 text-xs border-r border-zinc-800 bg-zinc-900 font-medium">{time}</td>
-                        {DAYS.map((day) => {
-                          const isSelected = selectedSlot?.day === day && selectedSlot?.time === time;
-                          return (
-                            <td key={`${day}-${time}`} className="p-1">
-                              <button
-                                onClick={() => setSelectedSlot({ day, time })}
-                                className={`w-full py-2.5 rounded transition-colors border text-xs font-medium ${
-                                  isSelected
-                                    ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
-                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer'
-                                }`}
-                              >
-                                {isSelected ? 'Selected' : 'Open'}
-                              </button>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="mb-2">
+                <h2 className="text-xl font-semibold text-zinc-50">Select a Time Slot</h2>
+                <p className="text-sm text-zinc-400">
+                  Select an available consultation slot published by {lawyer.name}. All sessions are conducted via secure video call.
+                </p>
               </div>
+
+              <ClientSlotPicker
+                schedules={schedules}
+                selectedSlot={selectedSlot}
+                onSelectSlot={(slot) => setSelectedSlot(slot)}
+                loading={schedulesLoading}
+                lawyerName={lawyer.name}
+              />
             </div>
           )}
 
@@ -376,7 +398,7 @@ export default function BookingPage() {
                 <div className="flex justify-between items-center text-sm border-b border-zinc-800/50 pb-4">
                   <span className="text-zinc-400">Date & Time</span>
                   <span className="text-zinc-50 font-medium">
-                    {selectedSlot?.day}, {selectedSlot?.time}
+                    {selectedSlot?.full_label || `${selectedSlot?.day || selectedSlot?.date}, ${selectedSlot?.time || selectedSlot?.start_time}`}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-zinc-800/50 pb-4">
