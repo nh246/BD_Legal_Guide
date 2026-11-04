@@ -1425,9 +1425,13 @@ export default function ClientDashboard() {
         onClose={() => {
           setIsThreadModalOpen(false);
           setThreadModalBooking(null);
+          reload();
         }}
         booking={threadModalBooking}
         currentUser={user}
+        onBookingUpdate={() => {
+          reload();
+        }}
         onReviewClick={(b) => {
           setIsThreadModalOpen(false);
           setReviewModalBooking(b);

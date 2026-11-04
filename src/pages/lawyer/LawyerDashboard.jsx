@@ -3422,10 +3422,14 @@ export default function LawyerDashboard() {
           onClose={() => {
             setIsBidsConsultationOpen(false);
             setBidsConsultationBooking(null);
+            reloadBookings();
           }}
           booking={bidsConsultationBooking}
           currentUser={user}
           isLawyerView={true}
+          onBookingUpdate={() => {
+            reloadBookings();
+          }}
         />
       )}
     </div>

@@ -37,12 +37,15 @@ export function getTodayDateStr() {
 
 /**
  * 1) isUpcoming(b):
- * Status in [pending, awaiting_payment, payment_submitted, confirmed] AND booking date >= today.
+ * Status in [pending, awaiting_payment, payment_submitted, confirmed, completion_requested].
  */
 export function isUpcoming(b) {
   if (!b) return false;
-  const upcomingStatuses = ['pending', 'awaiting_payment', 'payment_submitted', 'confirmed'];
+  const upcomingStatuses = ['pending', 'awaiting_payment', 'payment_submitted', 'confirmed', 'completion_requested'];
   if (!upcomingStatuses.includes(b.status)) return false;
+
+  // Completion requested is active awaiting confirmation regardless of date
+  if (b.status === 'completion_requested') return true;
 
   const dateStr = getBookingDateStr(b);
   if (!dateStr) return true; // fallback if date missing
@@ -62,8 +65,8 @@ export function isPast(b) {
   const dateStr = getBookingDateStr(b);
   const todayStr = getTodayDateStr();
 
-  // Any confirmed or completion_requested booking in the past moves to History
-  if (['confirmed', 'completion_requested'].includes(b.status)) {
+  // Any confirmed booking in the past moves to History
+  if (b.status === 'confirmed') {
     return Boolean(dateStr && dateStr < todayStr);
   }
 

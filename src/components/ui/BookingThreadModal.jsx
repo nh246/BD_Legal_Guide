@@ -13,6 +13,7 @@ export default function BookingThreadModal({
   currentUser,
   onReviewClick,
   isLawyerView = false,
+  onBookingUpdate,
 }) {
   const [booking, setBooking] = useState(initialBooking);
   const [messages, setMessages] = useState([]);
@@ -24,17 +25,23 @@ export default function BookingThreadModal({
     setBooking(initialBooking);
   }, [initialBooking]);
 
-  // If passed booking has only an ID, hydrate it via GET /bookings/{id}
+  // Always fetch fresh booking details from server when modal is opened
   useEffect(() => {
-    if (isOpen && initialBooking?.id && (!initialBooking.lawyer_id || !initialBooking.user_id)) {
+    if (isOpen && initialBooking?.id) {
+      setBooking(initialBooking);
       api
         .get(`/bookings/${initialBooking.id}`)
         .then((res) => {
-          if (res.data) setBooking((prev) => ({ ...prev, ...res.data }));
+          if (res.data) setBooking(res.data);
         })
         .catch(() => {});
     }
-  }, [isOpen, initialBooking]);
+  }, [isOpen, initialBooking?.id]);
+
+  const handleBookingUpdate = (updated) => {
+    setBooking((prev) => ({ ...prev, ...updated }));
+    onBookingUpdate?.(updated);
+  };
 
   const effectiveIsLawyer = Boolean(isLawyerView || currentUser?.role === 'lawyer');
   const lawyerId = booking?.lawyer_id || booking?.lawyerId;
@@ -171,8 +178,8 @@ export default function BookingThreadModal({
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-300 border border-blue-500/30">
                 <MessageSquare className="h-3 w-3" /> Consultation Thread
               </span>
-              <span className="text-xs text-zinc-400 font-medium">
-                {isCompleted ? 'Completed' : 'Confirmed'}
+              <span className="text-xs text-zinc-400 font-medium capitalize">
+                {booking?.status === 'completion_requested' ? 'Completion Requested' : (booking?.status || 'Confirmed')}
               </span>
             </div>
             <h3 className="text-base sm:text-lg font-bold text-zinc-100 truncate">
@@ -194,7 +201,7 @@ export default function BookingThreadModal({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {meetLink && (
+            {meetLink && !booking?.meeting_ended_at && booking?.status !== 'completed' && booking?.status !== 'completion_requested' && (
               <a
                 href={normalizeMeetingUrl(meetLink)}
                 target="_blank"
@@ -232,6 +239,7 @@ export default function BookingThreadModal({
             readOnlyMessage="Consultation completed. This thread is read-only."
             placeholder={`Write a message to ${recipientName}...`}
             booking={booking}
+            onBookingUpdate={handleBookingUpdate}
             onOpenReviewModal={onReviewClick}
           />
         </div>

@@ -486,9 +486,13 @@ export default function MyBookingsPage() {
         onClose={() => {
           setIsThreadModalOpen(false);
           setThreadModalBooking(null);
+          reload();
         }}
         booking={threadModalBooking}
         currentUser={user}
+        onBookingUpdate={() => {
+          reload();
+        }}
         onReviewClick={(b) => {
           setIsThreadModalOpen(false);
           setReviewModalBooking(b);
