@@ -2831,7 +2831,7 @@ export default function LawyerDashboard() {
                         <p className="text-xs sm:text-sm text-zinc-300 mt-1 max-w-xl">
                           {isGoldVerified
                             ? 'You hold an active Gold Verified Advocate status. Your profile features priority ranking in citizen searches, a verified badge, and full access to bid on the client Case Board.'
-                            : 'Upgrade your profile to Gold Verified (৳2,500/yr) to unlock the Case Board, submit direct client bids, and receive priority placement in the lawyer directory.'}
+                            : 'Upgrade your profile to Gold Verified (৳999/mo) to unlock the Case Board, submit direct client bids, and receive priority placement in the lawyer directory.'}
                         </p>
                       </div>
                     </div>
@@ -2839,7 +2839,7 @@ export default function LawyerDashboard() {
                     {!isGoldVerified && (
                       <Link to="/pricing?role=lawyer" className="shrink-0 w-full sm:w-auto">
                         <Button className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-bold shadow-md shadow-amber-500/20 gap-1.5">
-                          <Sparkles className="h-4 w-4" /> Upgrade to Gold (৳2,500/yr)
+                          <Sparkles className="h-4 w-4" /> Upgrade to Gold (৳999/mo)
                         </Button>
                       </Link>
                     )}
@@ -3079,10 +3079,10 @@ export default function LawyerDashboard() {
 
                     {/* CTAs */}
                     <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
-                      <Link to="/pricing">
+                      <Link to="/pricing?role=lawyer">
                         <Button className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-zinc-950 font-bold px-6 py-2.5 shadow-lg shadow-amber-500/20 gap-2">
                           <Sparkles className="h-4 w-4 text-zinc-950" />
-                          <span>Upgrade to Gold Verified (৳2,500/yr)</span>
+                          <span>Upgrade to Gold Verified (৳999/mo)</span>
                         </Button>
                       </Link>
                       <Button

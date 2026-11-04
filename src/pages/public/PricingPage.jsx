@@ -300,7 +300,10 @@ export default function PricingPage() {
     user?.is_pro === true
   );
 
-  const isLawyerVerified = Boolean(lawyerData?.verification_paid || lawyerData?.verification_status === 'approved');
+  const isLawyerVerified = Boolean(
+    lawyerData?.verification_paid === true ||
+    (subData?.status === 'active' && subData?.plan_code?.startsWith('lawyer_verified'))
+  );
 
   const getLivePlan = (code, fallback = {}) => {
     const found = allPlans.find((p) => p.code === code);
