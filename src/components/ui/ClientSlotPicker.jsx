@@ -36,32 +36,54 @@ export default function ClientSlotPicker({
 }) {
   const [viewMode, setViewMode] = useState('day'); // 'day' | 'grid'
 
-  // Generate next 7 days starting from today
-  const next7Days = useMemo(() => {
-    const today = new Date();
-    const list = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setDate(today.getDate() + i);
-      const dateStr = formatIsoDate(d);
-      const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
-      const fullWeekday = d.toLocaleDateString('en-US', { weekday: 'long' });
-      const displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      list.push({
-        dateStr,
-        weekday,
-        fullWeekday,
-        displayDate,
-        isToday: i === 0,
-      });
-    }
-    return list;
-  }, []);
-
-  // Filter only unbooked open slots
+  // Filter only unbooked open slots first so downstream memos can safely use it
   const openSlots = useMemo(() => {
     return (schedules || []).filter((s) => !s.is_booked);
   }, [schedules]);
+
+  // Generate upcoming days: next 7 days minimum, plus any future dates with open slots
+  const daysList = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dateSet = new Set();
+    const list = [];
+
+    // Base next 7 days
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(today.getDate() + i);
+      const iso = formatIsoDate(d);
+      dateSet.add(iso);
+      list.push({
+        dateStr: iso,
+        weekday: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        fullWeekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
+        displayDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        isToday: i === 0,
+      });
+    }
+
+    // Include any additional future dates from openSlots
+    (openSlots || []).forEach((slot) => {
+      if (!slot.date) return;
+      const dStr = typeof slot.date === 'string' ? slot.date.slice(0, 10) : '';
+      if (!dStr || dateSet.has(dStr)) return;
+      const d = new Date(dStr + 'T00:00:00');
+      if (d >= today) {
+        dateSet.add(dStr);
+        list.push({
+          dateStr: dStr,
+          weekday: !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { weekday: 'short' }) : 'Day',
+          fullWeekday: !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { weekday: 'long' }) : 'Day',
+          displayDate: !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : dStr,
+          isToday: dStr === formatIsoDate(today),
+        });
+      }
+    });
+
+    list.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+    return list;
+  }, [openSlots]);
 
   // Group open slots by normalized date (YYYY-MM-DD)
   const slotsByDate = useMemo(() => {
@@ -83,13 +105,13 @@ export default function ClientSlotPicker({
 
   // Find the first date that has available slots, otherwise default to today
   const initialDateStr = useMemo(() => {
-    for (const d of next7Days) {
+    for (const d of daysList) {
       if (slotsByDate[d.dateStr]?.length > 0) {
         return d.dateStr;
       }
     }
-    return next7Days[0]?.dateStr || '';
-  }, [next7Days, slotsByDate]);
+    return daysList[0]?.dateStr || '';
+  }, [daysList, slotsByDate]);
 
   const [activeDateStr, setActiveDateStr] = useState(initialDateStr);
 
@@ -98,9 +120,12 @@ export default function ClientSlotPicker({
       const d = typeof selectedSlot.date === 'string' ? selectedSlot.date.slice(0, 10) : '';
       if (d) setActiveDateStr(d);
     } else if (initialDateStr) {
-      setActiveDateStr((prev) => prev || initialDateStr);
+      setActiveDateStr((prev) => {
+        if (prev && slotsByDate[prev]?.length > 0) return prev;
+        return initialDateStr;
+      });
     }
-  }, [selectedSlot, initialDateStr]);
+  }, [selectedSlot, initialDateStr, slotsByDate]);
 
   const handleSlotClicked = (slot) => {
     const isCurrentlySelected =
@@ -132,7 +157,7 @@ export default function ClientSlotPicker({
     }
   };
 
-  const activeDayInfo = next7Days.find((d) => d.dateStr === activeDateStr) || {
+  const activeDayInfo = daysList.find((d) => d.dateStr === activeDateStr) || {
     dateStr: activeDateStr,
     fullWeekday: 'Selected Date',
     displayDate: formatDateEnGB(activeDateStr),
@@ -170,7 +195,7 @@ export default function ClientSlotPicker({
         <div className="flex items-center gap-2 text-xs text-zinc-400">
           <CalendarDays className="h-4 w-4 text-blue-400 shrink-0" />
           <span>
-            <strong className="text-emerald-400 font-semibold">{openSlots.length}</strong> available slot{openSlots.length !== 1 ? 's' : ''} across upcoming 7 days
+            <strong className="text-emerald-400 font-semibold">{openSlots.length}</strong> available slot{openSlots.length !== 1 ? 's' : ''} across upcoming {daysList.length} days
           </span>
         </div>
 
@@ -207,7 +232,7 @@ export default function ClientSlotPicker({
         <div className="space-y-5">
           {/* Horizontal Date Selector */}
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-            {next7Days.map((day) => {
+            {daysList.map((day) => {
               const daySlots = slotsByDate[day.dateStr] || [];
               const hasSlots = daySlots.length > 0;
               const isActive = activeDateStr === day.dateStr;
@@ -334,7 +359,7 @@ export default function ClientSlotPicker({
       {viewMode === 'grid' && (
         <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
           <div className="grid grid-cols-7 gap-2 min-w-[700px]">
-            {next7Days.map((day) => {
+            {daysList.map((day) => {
               const daySlots = slotsByDate[day.dateStr] || [];
 
               return (
