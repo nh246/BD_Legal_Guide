@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Users, Calendar, ShieldCheck, Clock, ArrowRight, Camera, User, Pencil, CreditCard, CheckCircle2, Star, Briefcase, Plus, Gavel } from 'lucide-react';
+import { MessageSquare, Users, Calendar, ShieldCheck, Clock, ArrowRight, Camera, User, Pencil, CreditCard, CheckCircle2, Star, Briefcase, Plus, Gavel, Video } from 'lucide-react';
 import Card, { CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
