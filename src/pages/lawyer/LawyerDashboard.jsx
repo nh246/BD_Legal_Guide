@@ -152,7 +152,7 @@ function EvidenceFileItem({ assetId, index, onOpen, isOpening }) {
 
 export default function LawyerDashboard() {
   const { user } = useAuthStore();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: reqData, loading: reqLoading, error: reqError, reload: reloadReq } = useApi('/lawyer/requests');
   const { data: schedData, loading: schedLoading, error: schedError, reload: reloadSchedules } = useApi('/lawyer/schedules');
   const { data: inboxData, loading: inboxLoading, error: inboxError, reload: reloadInbox, setData: setInboxData } = useApi('/messages/lawyer/inbox');
@@ -178,6 +178,17 @@ export default function LawyerDashboard() {
     return 'consultations';
   });
 
+  const handleTabChange = useCallback((newTab) => {
+    setActiveTab(newTab);
+    if (newTab === 'consultations') {
+      setSearchParams({}, { replace: true });
+    } else if (newTab === 'cases') {
+      setSearchParams({ tab: 'case-board' }, { replace: true });
+    } else {
+      setSearchParams({ tab: newTab }, { replace: true });
+    }
+  }, [setSearchParams]);
+
   useEffect(() => {
     const tabParam = searchParams.get('tab');
     if (tabParam === 'case-board' || tabParam === 'cases') {
@@ -192,16 +203,17 @@ export default function LawyerDashboard() {
       setActiveTab('inbox');
     } else if (tabParam === 'meetings') {
       setActiveTab('meetings');
-    } else if (tabParam === 'consultations') {
+    } else {
       setActiveTab('consultations');
     }
   }, [searchParams]);
 
   useEffect(() => {
-    if (!profileLoading && isUnverified && ['consultations', 'cases', 'availability', 'my-bids'].includes(activeTab)) {
-      setActiveTab('profile');
+    // Only lock out operational case-bidding/availability if unverified, but allow viewing dashboard consultations overview & profile
+    if (!profileLoading && isUnverified && ['cases', 'availability', 'my-bids'].includes(activeTab)) {
+      handleTabChange('profile');
     }
-  }, [profileLoading, isUnverified, activeTab]);
+  }, [profileLoading, isUnverified, activeTab, handleTabChange]);
 
   // Lawyer Bids tracking states
   const {
@@ -1030,7 +1042,7 @@ export default function LawyerDashboard() {
               disabled={isUnverified}
               onClick={() => {
                 if (isUnverified) return;
-                setActiveTab('availability');
+                handleTabChange('availability');
                 setShowAddSlot(true);
               }}
               className={isUnverified ? "opacity-50 cursor-not-allowed gap-2" : "bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-sm"}
@@ -1042,7 +1054,7 @@ export default function LawyerDashboard() {
               variant={activeTab === 'availability' ? 'primary' : 'secondary'}
               onClick={() => {
                 if (isUnverified) return;
-                setActiveTab('availability');
+                handleTabChange('availability');
               }}
               className={isUnverified ? "opacity-50 cursor-not-allowed gap-2" : "gap-2"}
             >
@@ -1108,7 +1120,7 @@ export default function LawyerDashboard() {
           </Card>
 
           <Card
-            onClick={() => !isUnverified && setActiveTab('availability')}
+            onClick={() => !isUnverified && handleTabChange('availability')}
             className={isUnverified ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:border-zinc-700 transition-colors"}
           >
             <CardContent className="p-6 flex items-center gap-4">
@@ -1123,7 +1135,7 @@ export default function LawyerDashboard() {
           </Card>
 
           <Card
-            onClick={() => setActiveTab('inbox')}
+            onClick={() => handleTabChange('inbox')}
             className="cursor-pointer hover:border-zinc-700 transition-colors"
           >
             <CardContent className="p-6 flex items-center gap-4">
@@ -1149,12 +1161,9 @@ export default function LawyerDashboard() {
         <div className="flex items-center gap-6 border-b border-zinc-800">
           <button
             id="tab-consultations"
-            onClick={() => !isUnverified && setActiveTab('consultations')}
-            disabled={isUnverified}
+            onClick={() => handleTabChange('consultations')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
-              isUnverified
-                ? 'opacity-40 cursor-not-allowed border-transparent text-zinc-500'
-                : activeTab === 'consultations'
+              activeTab === 'consultations'
                 ? 'border-blue-500 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
@@ -1162,7 +1171,9 @@ export default function LawyerDashboard() {
             <Inbox className="h-4 w-4" />
             <span>Consultations</span>
             {isUnverified ? (
-              <Lock className="h-3.5 w-3.5 text-zinc-500" />
+              <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-medium">
+                Pending Verification
+              </span>
             ) : pendingRequests.length > 0 && (
               <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">
                 {pendingRequests.length}
@@ -1172,7 +1183,7 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-my-bids"
-            onClick={() => !isUnverified && setActiveTab('my-bids')}
+            onClick={() => !isUnverified && handleTabChange('my-bids')}
             disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               isUnverified
@@ -1195,7 +1206,7 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-case-board"
-            onClick={() => !isUnverified && setActiveTab('cases')}
+            onClick={() => !isUnverified && handleTabChange('cases')}
             disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               isUnverified
@@ -1222,7 +1233,7 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-availability"
-            onClick={() => !isUnverified && setActiveTab('availability')}
+            onClick={() => !isUnverified && handleTabChange('availability')}
             disabled={isUnverified}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
               isUnverified
@@ -1245,7 +1256,7 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-inbox"
-            onClick={() => setActiveTab('inbox')}
+            onClick={() => handleTabChange('inbox')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'inbox'
                 ? 'border-blue-500 text-zinc-50'
@@ -1263,7 +1274,7 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-meetings"
-            onClick={() => setActiveTab('meetings')}
+            onClick={() => handleTabChange('meetings')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'meetings'
                 ? 'border-blue-500 text-zinc-50'
@@ -1276,7 +1287,7 @@ export default function LawyerDashboard() {
 
           <button
             id="tab-profile"
-            onClick={() => setActiveTab('profile')}
+            onClick={() => handleTabChange('profile')}
             className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'profile'
                 ? 'border-blue-500 text-zinc-50'
@@ -1317,7 +1328,27 @@ export default function LawyerDashboard() {
                 </Button>
               </div>
 
-              {requests.length === 0 ? (
+              {isUnverified ? (
+                <Card className="p-8 bg-zinc-900 border-zinc-800 text-center space-y-4">
+                  <div className="h-12 w-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                    <AlertCircle className="h-6 w-6" />
+                  </div>
+                  <div className="max-w-md mx-auto space-y-2">
+                    <h3 className="text-lg font-bold text-zinc-100">Verification Required to Receive Consultations</h3>
+                    <p className="text-sm text-zinc-400 leading-relaxed">
+                      Bangladesh Bar Council compliance requires all advocates to submit valid credentials (NID, Bar Council Sanad, and Practicing License) before receiving client consultation bookings.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <Button
+                      onClick={() => handleTabChange('profile')}
+                      className="bg-blue-600 hover:bg-blue-500 text-white gap-2 font-medium"
+                    >
+                      <Upload className="h-4 w-4" /> Go to Profile & Upload Credentials
+                    </Button>
+                  </div>
+                </Card>
+              ) : requests.length === 0 ? (
                 <EmptyState
                   icon={Inbox}
                   title="No consultation requests"
@@ -1564,7 +1595,7 @@ export default function LawyerDashboard() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => setActiveTab('cases')}
+                  onClick={() => handleTabChange('cases')}
                   className="bg-blue-600 hover:bg-blue-500 text-white text-xs gap-1.5 h-8.5 shadow-md shadow-blue-900/30 font-semibold"
                 >
                   <Briefcase className="h-3.5 w-3.5" />
@@ -3056,7 +3087,7 @@ export default function LawyerDashboard() {
                       </Link>
                       <Button
                         variant="secondary"
-                        onClick={() => setActiveTab('profile')}
+                        onClick={() => handleTabChange('profile')}
                         className="text-zinc-300 hover:text-zinc-100 gap-2"
                       >
                         <ShieldCheck className="h-4 w-4 text-emerald-400" />
