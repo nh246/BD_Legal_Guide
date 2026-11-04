@@ -29,7 +29,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
-import api, { asList, getErrorMessage } from '../../lib/api';
+import api, { asList, getErrorMessage, getAssetUrl } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
 
 export default function AdminLawyers() {
@@ -466,17 +466,17 @@ export default function AdminLawyers() {
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Status & Profile Top Card */}
             <div className="flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-              {lawyerAvatar ? (
-                <img
-                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/assets/${lawyerAvatar.id}/file`}
-                  alt={selectedLawyer.name}
-                  className="h-14 w-14 rounded-full object-cover border-2 border-zinc-700 shadow-md shrink-0"
-                />
-              ) : (
-                <div className="h-14 w-14 rounded-full bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xl font-black shadow-md shrink-0">
-                  {(selectedLawyer.name || 'A').charAt(0).toUpperCase()}
-                </div>
-              )}
+              <div className="h-14 w-14 rounded-full bg-blue-600/15 border border-zinc-700 flex items-center justify-center text-blue-400 font-black text-xl shadow-md shrink-0 overflow-hidden relative">
+                {lawyerAvatar ? (
+                  <img
+                    src={getAssetUrl(lawyerAvatar.id)}
+                    alt={selectedLawyer.name}
+                    className="h-full w-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : null}
+                <span className={lawyerAvatar ? 'hidden' : ''}>{(selectedLawyer.name || 'A').charAt(0).toUpperCase()}</span>
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="text-xs text-zinc-400 font-mono">ID: {selectedLawyer.id.slice(0, 8)}...</span>

@@ -28,7 +28,7 @@ import MeetingControls from '../../components/ui/MeetingControls';
 import ReviewModal from '../../components/ui/ReviewModal';
 import { openAssetInNewTab } from '../../utils/assets';
 import useApi from '../../lib/useApi';
-import api, { asList, getErrorMessage } from '../../lib/api';
+import api, { asList, getErrorMessage, getAssetUrl } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
 import { toast } from '../../store/useToastStore';
 
@@ -357,9 +357,10 @@ export default function LawyerProfilePage() {
                 >
                   {avatarAsset ? (
                     <img
-                      src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
+                      src={getAssetUrl(avatarAsset.id)}
                       alt={lawyer.name}
                       className="h-full w-full object-cover"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                   ) : (
                     getInitials(lawyer.name)
@@ -764,7 +765,7 @@ export default function LawyerProfilePage() {
                               <div className="h-9 w-9 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
                                 {rev.reviewer_avatar_asset_id ? (
                                   <img
-                                    src={`/api/assets/${rev.reviewer_avatar_asset_id}/file`}
+                                    src={getAssetUrl(rev.reviewer_avatar_asset_id)}
                                     alt={rev.reviewer_name || 'Client'}
                                     className="h-full w-full object-cover"
                                     onError={(e) => {
@@ -864,7 +865,7 @@ export default function LawyerProfilePage() {
                             <div className="h-10 w-10 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
                               {rev.reviewer_avatar_asset_id ? (
                                 <img
-                                  src={`/api/assets/${rev.reviewer_avatar_asset_id}/file`}
+                                  src={getAssetUrl(rev.reviewer_avatar_asset_id)}
                                   alt={rev.reviewer_name || 'Client'}
                                   className="h-full w-full object-cover"
                                   onError={(e) => {

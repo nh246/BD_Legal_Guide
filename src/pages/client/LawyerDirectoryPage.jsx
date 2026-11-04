@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, MapPin, ShieldCheck, BadgeCheck, FilterX, Users, Calendar, Briefcase, SearchX, Sparkles, Star } from 'lucide-react';
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
-import { asList } from '../../lib/api';
+import { asList, getAssetUrl } from '../../lib/api';
 
 const SPECIALTIES = ['All', 'Corporate Law', 'Criminal Defense', 'Family Law', 'Property & Land', 'Constitutional Law', 'Labour Law'];
 
@@ -318,7 +318,7 @@ export default function LawyerDirectoryPage() {
                       >
                         {lawyer.avatar_asset_id ? (
                           <img
-                            src={`/api/assets/${lawyer.avatar_asset_id}/file`}
+                            src={getAssetUrl(lawyer.avatar_asset_id)}
                             alt={lawyer.name}
                             className="h-full w-full object-cover"
                             onError={(e) => {

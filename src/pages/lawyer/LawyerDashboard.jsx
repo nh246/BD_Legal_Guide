@@ -53,7 +53,7 @@ import BookingThreadModal from '../../components/ui/BookingThreadModal';
 
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/PageStates';
 import useApi from '../../lib/useApi';
-import api, { asList, getErrorMessage } from '../../lib/api';
+import api, { asList, getErrorMessage, getAssetUrl } from '../../lib/api';
 import useAuthStore from '../../store/useAuthStore';
 import { toast } from '../../store/useToastStore';
 
@@ -2255,17 +2255,17 @@ export default function LawyerDashboard() {
                 <CardContent className="p-6">
                   <div className="flex flex-col sm:flex-row items-center gap-6">
                     <div className="relative shrink-0">
-                      {avatarAsset ? (
-                        <img
-                          src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
-                          alt={lawyerName}
-                          className="h-28 w-28 rounded-full object-cover border-4 border-zinc-800 shadow-xl"
-                        />
-                      ) : (
-                        <div className="h-28 w-28 rounded-full bg-blue-600/10 border-4 border-zinc-800 text-blue-400 flex items-center justify-center text-3xl font-bold shadow-xl">
-                          {getInitials(lawyerName)}
-                        </div>
-                      )}
+                      <div className="h-28 w-28 rounded-full bg-blue-600/10 border-4 border-zinc-800 text-blue-400 flex items-center justify-center text-3xl font-bold shadow-xl overflow-hidden relative">
+                        {avatarAsset ? (
+                          <img
+                            src={getAssetUrl(avatarAsset.id)}
+                            alt={lawyerName}
+                            className="h-full w-full object-cover"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        ) : null}
+                        <span className={avatarAsset ? 'hidden' : ''}>{getInitials(lawyerName)}</span>
+                      </div>
                     </div>
 
                     <div className="flex-1 text-center sm:text-left space-y-2">

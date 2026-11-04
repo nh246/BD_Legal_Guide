@@ -27,7 +27,7 @@ import {
 } from '../../utils/bookings';
 import useApi from '../../lib/useApi';
 import useAuthStore from '../../store/useAuthStore';
-import api, { asList, getErrorMessage } from '../../lib/api';
+import api, { asList, getErrorMessage, getAssetUrl } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
 
 export default function ClientDashboard() {
@@ -396,17 +396,17 @@ export default function ClientDashboard() {
                   className="relative shrink-0 rounded-full cursor-pointer group"
                   title="Click to edit photo"
                 >
-                  {avatarAsset ? (
-                    <img
-                      src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${avatarAsset.id}/file`}
-                      alt={displayName}
-                      className="h-20 w-20 rounded-full object-cover border-2 border-zinc-700 shadow-md group-hover:border-zinc-500 transition-all"
-                    />
-                  ) : (
-                    <div className="h-20 w-20 rounded-full bg-blue-600/10 border-2 border-blue-500/20 text-blue-400 flex items-center justify-center text-2xl font-bold shadow-md group-hover:border-blue-500/50 transition-all">
-                      {avatarLetter}
-                    </div>
-                  )}
+                  <div className="h-20 w-20 rounded-full bg-blue-600/10 border-2 border-zinc-700 text-blue-400 flex items-center justify-center text-2xl font-bold shadow-md group-hover:border-zinc-500 transition-all overflow-hidden relative">
+                    {avatarAsset ? (
+                      <img
+                        src={getAssetUrl(avatarAsset.id)}
+                        alt={displayName}
+                        className="h-full w-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                    ) : null}
+                    <span className={avatarAsset ? 'hidden' : ''}>{avatarLetter}</span>
+                  </div>
 
                   {/* Centered camera icon overlay on hover */}
                   <div className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">

@@ -5,7 +5,7 @@ import Button from './Button';
 import Badge from './Badge';
 import { LoadingState } from './PageStates';
 import CaseDiscussionModal from './CaseDiscussionModal';
-import api, { getErrorMessage } from '../../lib/api';
+import api, { getErrorMessage, getAssetUrl } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
 import useAuthStore from '../../store/useAuthStore';
 
@@ -171,9 +171,10 @@ export default function CaseBidsList({
                     <div className="h-12 w-12 rounded-full overflow-hidden shrink-0 border-2 border-amber-500/30 bg-amber-500/10 text-amber-300 flex items-center justify-center font-bold text-base shadow-sm">
                       {bid.lawyer_avatar_asset_id ? (
                         <img
-                          src={`${(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/assets/${bid.lawyer_avatar_asset_id}/file`}
+                          src={getAssetUrl(bid.lawyer_avatar_asset_id)}
                           alt={bid.lawyer_name || 'Lawyer'}
                           className="h-full w-full object-cover"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
                         />
                       ) : (
                         <span>{(bid.lawyer_name || 'Advocate')[0].toUpperCase()}</span>
