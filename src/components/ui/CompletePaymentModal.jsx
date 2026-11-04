@@ -208,6 +208,14 @@ export default function CompletePaymentModal({
             </div>
           ) : (
             <>
+              {/* Consultation Fee to Pay */}
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 flex items-center justify-between">
+                <span className="text-sm text-zinc-300">Consultation Fee to Pay:</span>
+                <span className="text-lg font-bold text-blue-400">
+                  ৳{(booking?.fee || booking?.hourly_rate || 500).toLocaleString()}
+                </span>
+              </div>
+
               {/* Section 1: Payment Instructions */}
               <div className="bg-zinc-950/80 border border-zinc-800/80 rounded-xl p-4">
                 <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">

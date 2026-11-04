@@ -342,7 +342,13 @@ export default function LawyerProfilePage() {
   const languages = Array.isArray(lawyer.languages) ? lawyer.languages : ['Bangla', 'English'];
   const education = Array.isArray(lawyer.education) ? lawyer.education : ['LL.B., University of Dhaka'];
   const reviews = reviewsList;
-  const rateBdt = lawyer.rateBdt || lawyer.rate || lawyer.hourly_rate || 2000;
+  const feeBdt = typeof lawyer.hourly_rate === 'number'
+    ? lawyer.hourly_rate
+    : typeof lawyer.rateBdt === 'number'
+    ? lawyer.rateBdt
+    : typeof lawyer.rate === 'number'
+    ? lawyer.rate
+    : 1500;
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-zinc-950 p-4 sm:p-8">
@@ -470,8 +476,8 @@ export default function LawyerProfilePage() {
                       </span>
                     </div>
                     <div className="text-right mt-2 sm:mt-0">
-                      <span className="text-2xl font-bold text-zinc-50">৳{rateBdt.toLocaleString()}</span>
-                      <span className="text-zinc-500 text-sm">/hr</span>
+                      <span className="text-2xl font-bold text-zinc-50">৳{feeBdt.toLocaleString()}</span>
+                      <span className="text-zinc-500 text-sm"> / consultation</span>
                     </div>
                   </div>
                 </div>
@@ -961,7 +967,7 @@ export default function LawyerProfilePage() {
               </div>
               <div className="flex justify-between items-center text-sm border-t border-zinc-800/50 pt-4">
                 <span className="text-zinc-400">Consultation Fee</span>
-                <span className="text-zinc-50 font-medium">৳{(rateBdt / 2).toLocaleString()}</span>
+                <span className="text-zinc-50 font-medium">৳{feeBdt.toLocaleString()}</span>
               </div>
             </div>
 

@@ -309,7 +309,7 @@ export default function MyBookingsPage() {
                           }}
                           className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-amber-600/20 transition-colors cursor-pointer"
                         >
-                          <CreditCard className="h-4 w-4" /> Pay Now ৳{booking.fee || 2000}
+                          <CreditCard className="h-4 w-4" /> Pay Now ৳{booking.fee || 500}
                         </button>
 
                         {isCaseBoardBooking(booking) && (

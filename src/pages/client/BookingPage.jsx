@@ -171,7 +171,13 @@ export default function BookingPage() {
     );
   }
 
-  const rateBdt = lawyer.rateBdt || lawyer.rate || 2000;
+  const feeBdt = typeof lawyer.hourly_rate === 'number'
+    ? lawyer.hourly_rate
+    : typeof lawyer.rateBdt === 'number'
+    ? lawyer.rateBdt
+    : typeof lawyer.rate === 'number'
+    ? lawyer.rate
+    : 1500;
 
   const isStepValid = () => {
     if (step === 1) return selectedSlot !== null;
@@ -407,7 +413,7 @@ export default function BookingPage() {
                 </div>
                 <div className="flex justify-between items-center pt-2">
                   <span className="font-semibold text-zinc-50">Total Fee</span>
-                  <span className="text-xl font-bold text-blue-400">৳{(rateBdt / 2).toLocaleString()}</span>
+                  <span className="text-xl font-bold text-blue-400">৳{feeBdt.toLocaleString()}</span>
                 </div>
               </div>
             </div>

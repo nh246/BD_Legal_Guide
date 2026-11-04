@@ -762,7 +762,7 @@ export default function ClientDashboard() {
                                   setIsPaymentModalOpen(true);
                                 }}
                               >
-                                <CreditCard className="h-3.5 w-3.5" /> Pay Now ৳{b.fee || 2000}
+                                <CreditCard className="h-3.5 w-3.5" /> Pay Now ৳{b.fee || 500}
                               </Button>
 
                               {isCaseBoardBooking(b) && (
