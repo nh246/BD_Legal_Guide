@@ -241,6 +241,8 @@ export default function MeetingControls({
 
   const meetingLink = booking.meeting_link;
   const normalizedLink = normalizeMeetingUrl(meetingLink);
+  const isGoogleMeet = Boolean(meetingLink && meetingLink.toLowerCase().includes('meet.google.com'));
+  const instantFallbackLink = `https://meet.jit.si/LegalBridge-${String(booking.id || '').replace(/-/g, '').slice(0, 12)}`;
 
   return (
     <div
@@ -261,6 +263,21 @@ export default function MeetingControls({
           <Video className="h-4 w-4" />
           <span>Join Meeting</span>
           <ExternalLink className="h-3 w-3 opacity-80" />
+        </a>
+      )}
+
+      {/* Fallback Instant Video button if Google Meet is used */}
+      {isGoogleMeet && (
+        <a
+          href={instantFallbackLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Zero-login backup video room (No Google account or host approval needed)"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white font-medium text-xs transition-all border border-zinc-700/80 shrink-0 shadow-sm"
+        >
+          <Video className="h-3.5 w-3.5 text-blue-400" />
+          <span>Backup Instant Room</span>
+          <ExternalLink className="h-3 w-3 opacity-60" />
         </a>
       )}
 

@@ -108,7 +108,11 @@ export default function Navbar() {
       }
     }
     if (notif.link) {
-      navigate(notif.link);
+      let target = notif.link;
+      if (target === '/lawyer/dashboard') target = '/lawyer';
+      if (target === '/lawyer/inbox') target = '/lawyer?tab=inbox';
+      if (target === '/client/dashboard') target = '/client';
+      navigate(target);
     }
   };
 

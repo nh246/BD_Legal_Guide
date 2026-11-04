@@ -174,6 +174,7 @@ export default function LawyerDashboard() {
     const tabParam = searchParams.get('tab');
     if (tabParam === 'case-board' || tabParam === 'cases') return 'cases';
     if (tabParam === 'my-bids' || tabParam === 'bids') return 'my-bids';
+    if (tabParam === 'meeting-settings' || tabParam === 'meetings') return 'meetings';
     if (['consultations', 'availability', 'inbox', 'meetings', 'profile'].includes(tabParam)) return tabParam;
     return 'consultations';
   });
@@ -201,7 +202,7 @@ export default function LawyerDashboard() {
       setActiveTab('availability');
     } else if (tabParam === 'inbox') {
       setActiveTab('inbox');
-    } else if (tabParam === 'meetings') {
+    } else if (tabParam === 'meetings' || tabParam === 'meeting-settings') {
       setActiveTab('meetings');
     } else {
       setActiveTab('consultations');
@@ -2782,9 +2783,16 @@ export default function LawyerDashboard() {
                       <label className="text-sm font-medium text-zinc-200">Meeting Provider</label>
                       <select
                         value={meetingProvider}
-                        onChange={(e) => setMeetingProvider(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMeetingProvider(val);
+                          if (val === 'Legal Bridge Instant Video' && (!meetingLink || meetingLink.includes('meet.google.com'))) {
+                            setMeetingLink('https://meet.jit.si/LegalBridge-Consultation');
+                          }
+                        }}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer"
                       >
+                        <option value="Legal Bridge Instant Video">Legal Bridge Instant Video (Instant / No Google Login)</option>
                         <option value="Google Meet">Google Meet</option>
                         <option value="Zoom">Zoom</option>
                         <option value="Microsoft Teams">Microsoft Teams</option>
@@ -2799,11 +2807,35 @@ export default function LawyerDashboard() {
                         type="text"
                         value={meetingLink}
                         onChange={(e) => setMeetingLink(e.target.value)}
-                        placeholder={meetingProvider === 'Phone Call' ? '+88017XXXXXXXX' : 'https://meet.google.com/abc-defg-hij'}
+                        placeholder={
+                          meetingProvider === 'Legal Bridge Instant Video'
+                            ? 'https://meet.jit.si/LegalBridge-Consultation'
+                            : meetingProvider === 'Phone Call'
+                            ? '+88017XXXXXXXX'
+                            : 'https://meet.google.com/abc-defg-hij'
+                        }
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none font-mono"
                       />
                     </div>
                   </div>
+
+                  {meetingProvider === 'Legal Bridge Instant Video' && (
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300">
+                      ✨ <strong>Instant Zero-Login Video:</strong> Both you and your client join directly in your browser. No Google account, app install, or host admission required.
+                    </div>
+                  )}
+
+                  {meetingProvider === 'Google Meet' && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 space-y-1">
+                      <div className="font-semibold text-amber-200 flex items-center gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+                        Google Meet Host Notice
+                      </div>
+                      <p>
+                        Clients will be paused on <em>"Asking to join..."</em> until you click <strong>"Admit"</strong> in Google Meet. You must be signed into the same Google account that generated the link.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -2890,9 +2922,16 @@ export default function LawyerDashboard() {
                     <select
                       id="meeting-provider-select"
                       value={meetingProvider}
-                      onChange={(e) => setMeetingProvider(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMeetingProvider(val);
+                        if (val === 'Legal Bridge Instant Video' && (!meetingLink || meetingLink.includes('meet.google.com'))) {
+                          setMeetingLink('https://meet.jit.si/LegalBridge-Consultation');
+                        }
+                      }}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-50 focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer"
                     >
+                      <option value="Legal Bridge Instant Video">Legal Bridge Instant Video (Instant / No Google Login)</option>
                       <option value="Google Meet">Google Meet</option>
                       <option value="Zoom">Zoom</option>
                       <option value="Microsoft Teams">Microsoft Teams</option>
@@ -2903,6 +2942,33 @@ export default function LawyerDashboard() {
                       Choose which platform you use for your video consultations or select Phone Call.
                     </p>
                   </div>
+
+                  {meetingProvider === 'Legal Bridge Instant Video' && (
+                    <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300 space-y-1">
+                      <p className="font-semibold text-blue-200 flex items-center gap-1.5">
+                        <Video className="h-4 w-4 text-blue-400" />
+                        Instant Zero-Login Video Room (Recommended)
+                      </p>
+                      <p>
+                        Clients click "Join Meeting" and connect directly inside their browser with camera and mic. No Google account, software install, or "asking to join" waiting rooms!
+                      </p>
+                    </div>
+                  )}
+
+                  {meetingProvider === 'Google Meet' && (
+                    <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 space-y-1">
+                      <p className="font-semibold text-amber-200 flex items-center gap-1.5">
+                        <AlertCircle className="h-4 w-4 text-amber-400" />
+                        Important Note for Google Meet
+                      </p>
+                      <p>
+                        When clients join, Google Meet requires the host to click <strong>"Admit"</strong>.
+                      </p>
+                      <p>
+                        Make sure you open the call on this device using the same Google account that created the link. If you prefer instant entry with zero admission steps, switch to <strong>Legal Bridge Instant Video</strong>.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Meeting Link or Phone Number */}
                   <div className="space-y-2">
@@ -2917,7 +2983,9 @@ export default function LawyerDashboard() {
                         value={meetingLink}
                         onChange={(e) => setMeetingLink(e.target.value)}
                         placeholder={
-                          meetingProvider === 'Phone Call'
+                          meetingProvider === 'Legal Bridge Instant Video'
+                            ? 'https://meet.jit.si/LegalBridge-Consultation'
+                            : meetingProvider === 'Phone Call'
                             ? '+88017XXXXXXXX'
                             : 'https://meet.google.com/abc-defg-hij'
                         }
@@ -2925,7 +2993,9 @@ export default function LawyerDashboard() {
                       />
                     </div>
                     <p className="text-xs text-zinc-500">
-                      Enter your permanent room link (e.g. Google Meet, Zoom personal room) or direct phone number.
+                      {meetingProvider === 'Legal Bridge Instant Video'
+                        ? 'Default room URL (each confirmed booking automatically gets a unique session room).'
+                        : 'Enter your permanent room link (e.g. Google Meet, Zoom personal room) or direct phone number.'}
                     </p>
                   </div>
 

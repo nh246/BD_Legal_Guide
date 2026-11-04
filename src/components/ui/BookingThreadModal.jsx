@@ -202,15 +202,29 @@ export default function BookingThreadModal({
 
           <div className="flex items-center gap-2 shrink-0">
             {meetLink && !booking?.meeting_ended_at && booking?.status !== 'completed' && booking?.status !== 'completion_requested' && (
-              <a
-                href={normalizeMeetingUrl(meetLink)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Video className="h-3.5 w-3.5" />
-                <span>Join Video Call</span>
-              </a>
+              <div className="flex items-center gap-1.5">
+                <a
+                  href={normalizeMeetingUrl(meetLink)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Video className="h-3.5 w-3.5" />
+                  <span>Join Call</span>
+                </a>
+                {meetLink.toLowerCase().includes('meet.google.com') && (
+                  <a
+                    href={`https://meet.jit.si/LegalBridge-${String(booking.id || '').replace(/-/g, '').slice(0, 12)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Zero-login backup video room if Google Meet is waiting for host admission"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs font-medium border border-zinc-700 transition-colors"
+                  >
+                    <Video className="h-3 w-3 text-blue-400" />
+                    <span>Backup</span>
+                  </a>
+                )}
+              </div>
             )}
 
             <button

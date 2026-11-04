@@ -402,14 +402,27 @@ export default function MyBookingsPage() {
                     )}
 
                     {chatAllowed(booking) && (booking.meet_link || booking.meeting_link) && (
-                      <a
-                        href={normalizeMeetingUrl(booking.meet_link || booking.meeting_link)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"
-                      >
-                        <Video className="h-4 w-4" /> Join Call
-                      </a>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a
+                          href={normalizeMeetingUrl(booking.meet_link || booking.meeting_link)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"
+                        >
+                          <Video className="h-4 w-4" /> Join Call
+                        </a>
+                        {(booking.meet_link || booking.meeting_link || '').toLowerCase().includes('meet.google.com') && (
+                          <a
+                            href={`https://meet.jit.si/LegalBridge-${String(booking.id || '').replace(/-/g, '').slice(0, 12)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Zero-login backup video room if Google Meet is waiting for host admission"
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700 transition-colors"
+                          >
+                            <Video className="h-3.5 w-3.5 text-blue-400" /> Backup Room
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

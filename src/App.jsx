@@ -5,6 +5,7 @@ import { Building2 } from 'lucide-react';
 import Navbar from './components/layout/Navbar';
 import RequireAuth from './components/RequireAuth';
 import Toaster from './components/ui/Toaster';
+import useAuthStore from './store/useAuthStore';
 
 // Public Pages
 import LandingPage from './pages/public/LandingPage';
@@ -41,6 +42,14 @@ import AdminPayments from './pages/admin/AdminPayments';
 import AdminAuditLogs from './pages/admin/AdminAuditLogs';
 
 import ErrorBoundary from './components/ErrorBoundary';
+
+function DashboardRedirect() {
+  const { user } = useAuthStore();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin' || user.role === 'moderator') return <Navigate to="/admin" replace />;
+  if (user.role === 'lawyer') return <Navigate to="/lawyer" replace />;
+  return <Navigate to="/client" replace />;
+}
 
 function FirmComingSoon() {
   return (
@@ -122,12 +131,13 @@ function App() {
             <Route path="/signup" element={<Navigate to="/register" replace />} />
             <Route path="/chat" element={<Navigate to="/client/chat" replace />} />
             <Route path="/lawyers" element={<Navigate to="/client/lawyers" replace />} />
-            <Route path="/dashboard" element={<Navigate to="/client" replace />} />
+            <Route path="/dashboard" element={<DashboardRedirect />} />
             <Route path="/firm/*" element={<ErrorBoundary name="Firm Module"><FirmComingSoon /></ErrorBoundary>} />
 
             {/* Client */}
             <Route path="/client" element={<RequireAuth roles={['user', 'admin']} />}>
               <Route index element={<ErrorBoundary name="Client Dashboard"><ClientDashboard /></ErrorBoundary>} />
+              <Route path="dashboard" element={<Navigate to="/client" replace />} />
               <Route path="chat" element={<ErrorBoundary name="Client Chat"><ChatPage /></ErrorBoundary>} />
               <Route path="chat/:sessionId" element={<ErrorBoundary name="Client Chat"><ChatPage /></ErrorBoundary>} />
               <Route path="lawyers" element={<ErrorBoundary name="Lawyer Directory"><LawyerDirectoryPage /></ErrorBoundary>} />
@@ -141,8 +151,17 @@ function App() {
             {/* Lawyer */}
             <Route path="/lawyer" element={<RequireAuth roles={['lawyer', 'admin']} />}>
               <Route index element={<ErrorBoundary name="Lawyer Dashboard"><LawyerDashboard /></ErrorBoundary>} />
-              <Route path="onboarding" element={<ErrorBoundary name="Lawyer Onboarding"><LawyerOnboarding /></ErrorBoundary>} />
+              <Route path="dashboard" element={<Navigate to="/lawyer" replace />} />
+              <Route path="inbox" element={<Navigate to="/lawyer?tab=inbox" replace />} />
+              <Route path="consultations" element={<Navigate to="/lawyer?tab=consultations" replace />} />
+              <Route path="bids" element={<Navigate to="/lawyer?tab=bids" replace />} />
+              <Route path="case-board" element={<Navigate to="/lawyer?tab=case-board" replace />} />
+              <Route path="caseboard" element={<Navigate to="/lawyer?tab=case-board" replace />} />
               <Route path="profile" element={<Navigate to="/lawyer?tab=profile" replace />} />
+              <Route path="settings" element={<Navigate to="/lawyer?tab=profile" replace />} />
+              <Route path="meeting-settings" element={<Navigate to="/lawyer?tab=meeting-settings" replace />} />
+              <Route path="meetings" element={<Navigate to="/lawyer?tab=meeting-settings" replace />} />
+              <Route path="onboarding" element={<ErrorBoundary name="Lawyer Onboarding"><LawyerOnboarding /></ErrorBoundary>} />
               <Route path="availability" element={<ErrorBoundary name="Availability Management"><AvailabilityPage /></ErrorBoundary>} />
               <Route path="requests/:id" element={<ErrorBoundary name="Booking Detail"><BookingDetailPage /></ErrorBoundary>} />
             </Route>

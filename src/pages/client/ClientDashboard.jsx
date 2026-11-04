@@ -789,14 +789,27 @@ export default function ClientDashboard() {
                           )}
 
                           {(b.meet_link || b.meeting_link) && chatAllowed(b) && (
-                            <a
-                              href={normalizeMeetingUrl(b.meet_link || b.meeting_link)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
-                            >
-                              <Video className="h-3.5 w-3.5" /> Join Meeting
-                            </a>
+                            <div className="flex items-center gap-1.5">
+                              <a
+                                href={normalizeMeetingUrl(b.meet_link || b.meeting_link)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                              >
+                                <Video className="h-3.5 w-3.5" /> Join Meeting
+                              </a>
+                              {(b.meet_link || b.meeting_link || '').toLowerCase().includes('meet.google.com') && (
+                                <a
+                                  href={`https://meet.jit.si/LegalBridge-${String(b.id || '').replace(/-/g, '').slice(0, 12)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Zero-login backup video room if Google Meet is waiting for host admission"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs font-medium border border-zinc-700 transition-colors"
+                                >
+                                  <Video className="h-3 w-3 text-blue-400" /> Backup Room
+                                </a>
+                              )}
+                            </div>
                           )}
 
                           {b.status === 'completion_requested' && (
