@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Send, Video, ExternalLink } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import useApi from '../../lib/useApi';
+import { normalizeMeetingUrl } from '../../utils/bookings';
 
 export default function ConsultationChatPage() {
   const { id } = useParams();
@@ -10,7 +11,7 @@ export default function ConsultationChatPage() {
   const [input, setInput] = useState('');
 
   const lawyerName = booking?.lawyer_name || booking?.lawyerName || 'Advocate';
-  const meetLink = booking?.meet_link || booking?.meetLink;
+  const meetLink = booking?.meet_link || booking?.meetLink || booking?.meeting_link;
 
   const [messages, setMessages] = useState([
     { id: 1, sender: 'lawyer', text: 'Hello! I have reviewed your case brief.', time: '10:30 AM' },
@@ -58,7 +59,7 @@ export default function ConsultationChatPage() {
             <Video className="h-5 w-5" />
             <span className="text-sm font-medium">Video Consultation Link</span>
           </div>
-          <a href={meetLink} target="_blank" rel="noopener noreferrer">
+          <a href={normalizeMeetingUrl(meetLink)} target="_blank" rel="noopener noreferrer">
             <Button size="sm" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white gap-2">
               Join Meeting <ExternalLink className="h-4 w-4" />
             </Button>

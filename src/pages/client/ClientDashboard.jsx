@@ -24,6 +24,7 @@ import {
   chatAllowed,
   isCaseBoardBooking,
   getBookingDateStr,
+  normalizeMeetingUrl,
 } from '../../utils/bookings';
 import useApi from '../../lib/useApi';
 import useAuthStore from '../../store/useAuthStore';
@@ -789,7 +790,7 @@ export default function ClientDashboard() {
 
                           {(b.meet_link || b.meeting_link) && chatAllowed(b) && (
                             <a
-                              href={b.meet_link || b.meeting_link}
+                              href={normalizeMeetingUrl(b.meet_link || b.meeting_link)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
@@ -1273,12 +1274,12 @@ export default function ClientDashboard() {
             </div>
 
             {/* Video Meeting Link if confirmed */}
-            {selectedBooking.meet_link && (
+            {(selectedBooking.meet_link || selectedBooking.meeting_link) && (
               <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-blue-300 font-semibold uppercase tracking-wider">Video Meeting Link</span>
                   <a
-                    href={selectedBooking.meet_link}
+                    href={normalizeMeetingUrl(selectedBooking.meet_link || selectedBooking.meeting_link)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium transition-colors"
@@ -1286,7 +1287,9 @@ export default function ClientDashboard() {
                     Join Video Call
                   </a>
                 </div>
-                <p className="text-xs text-zinc-300 break-all font-mono">{selectedBooking.meet_link}</p>
+                <p className="text-xs text-zinc-300 break-all font-mono">
+                  {normalizeMeetingUrl(selectedBooking.meet_link || selectedBooking.meeting_link)}
+                </p>
               </div>
             )}
 

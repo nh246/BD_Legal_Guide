@@ -19,6 +19,7 @@ import {
   chatAllowed,
   isCaseBoardBooking,
   getBookingDateStr,
+  normalizeMeetingUrl,
 } from '../../utils/bookings';
 import useApi from '../../lib/useApi';
 import useAuthStore from '../../store/useAuthStore';
@@ -364,7 +365,7 @@ export default function MyCasesPage() {
 
                               {caseItem.booking_meeting_link && (
                                 <a
-                                  href={caseItem.booking_meeting_link}
+                                  href={normalizeMeetingUrl(caseItem.booking_meeting_link)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"

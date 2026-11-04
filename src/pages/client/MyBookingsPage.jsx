@@ -15,6 +15,7 @@ import {
   chatAllowed,
   isCaseBoardBooking,
   getBookingDateStr,
+  normalizeMeetingUrl,
 } from '../../utils/bookings';
 import useAuthStore from '../../store/useAuthStore';
 import useApi from '../../lib/useApi';
@@ -402,7 +403,7 @@ export default function MyBookingsPage() {
 
                     {chatAllowed(booking) && (booking.meet_link || booking.meeting_link) && (
                       <a
-                        href={booking.meet_link || booking.meeting_link}
+                        href={normalizeMeetingUrl(booking.meet_link || booking.meeting_link)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"

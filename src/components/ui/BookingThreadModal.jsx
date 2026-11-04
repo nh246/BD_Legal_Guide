@@ -4,6 +4,7 @@ import DirectMessageThread from './DirectMessageThread';
 import CaseDiscussionModal from './CaseDiscussionModal';
 import api, { getErrorMessage } from '../../lib/api';
 import { toast } from '../../store/useToastStore';
+import { normalizeMeetingUrl } from '../../utils/bookings';
 
 export default function BookingThreadModal({
   isOpen,
@@ -195,7 +196,7 @@ export default function BookingThreadModal({
           <div className="flex items-center gap-2 shrink-0">
             {meetLink && (
               <a
-                href={meetLink}
+                href={normalizeMeetingUrl(meetLink)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"

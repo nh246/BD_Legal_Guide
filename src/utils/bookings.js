@@ -176,3 +176,20 @@ export function isCaseBoardBooking(b) {
     b.case_brief?.toLowerCase().includes('lawyer pitch')
   );
 }
+
+/**
+ * Normalizes any meeting URL or phone number.
+ * Guarantees that external links without protocol (e.g. 'meet.google.com/xyz')
+ * start with 'https://' so the browser does not treat them as relative internal routes.
+ */
+export function normalizeMeetingUrl(link) {
+  if (!link) return '';
+  const trimmed = String(link).trim();
+  if (/^https?:\/\//i.test(trimmed) || /^tel:/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^[+0-9\s-]+$/.test(trimmed)) {
+    return `tel:${trimmed.replace(/\s+/g, '')}`;
+  }
+  return `https://${trimmed}`;
+}
